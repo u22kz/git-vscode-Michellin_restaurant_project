@@ -1,4 +1,2 @@
 Informacje o projekcie restauracji Michellin i ich dalsze postępy.
-Synchronizacja Github + Git + VScode !!!
-
-test działania konsoli git.
++Dodano listę ignorowanych plików ".gitignore" która nie śledzi plików ,który i tak są zbędne lub automatycznie się tworzą.
