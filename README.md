@@ -2,11 +2,11 @@ Informacje o projekcie restauracji Michellin i ich dalsze postępy.<br>
 +Dodano listę ignorowanych plików ".gitignore" która nie śledzi plików ,który i tak są zbędne lub automatycznie się tworzą.
 ## Baza danych
 
-Baza danych projektu została utworzona w MySQL/MariaDB.
+Baza danych projektu została utworzona w MySQL.
 
 Plik z pełną strukturą bazy oraz danymi testowymi znajduje się w:
 
-`database/database.sql`
+`database.sql`
 
 Baza zawiera następujące tabele:
 
@@ -29,9 +29,9 @@ W bazie zastosowano:
 
 ### Odtworzenie bazy
 
-1. Uruchomić MySQL/MariaDB.
+1. Uruchomić MySQL.
 2. Otworzyć phpMyAdmin.
-3. Zaimportować plik `database/database.sql`.
+3. Zaimportować plik `database.sql`.
 4. Po imporcie zostanie utworzona baza `michelin_restaurant` wraz ze wszystkimi tabelami i danymi testowymi.
 
 Diagram ERD bazy znajduje się w dokumentacji projektu.
