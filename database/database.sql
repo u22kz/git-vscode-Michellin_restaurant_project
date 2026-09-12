@@ -284,7 +284,11 @@ VALUES
 (3, 'Piotr', 'Wiśniewski', '502603704', 'piotr.wisniewski@example.com', 'TEST_HASH_3', 'employee'),
 (4, 'Maria', 'Wójcik', '503604705', 'maria.wojcik@example.com', 'TEST_HASH_4', 'employee'),
 (5, 'Tomasz', 'Kaczmarek', '504605706', 'tomasz.kaczmarek@example.com', 'TEST_HASH_5', 'employee'),
-(6, 'Adam', 'Zieliński', '505606707', 'adam.zielinski@example.com', 'TEST_HASH_6', 'admin');
+(6, 'Adam', 'Zieliński', '505606707', 'adam.zielinski@example.com', 'TEST_HASH_6', 'admin'),
+(7, 'Michał', 'Szymański', '506707808', 'michal.szymanski@example.com', 'TEST_HASH_7', 'kelner'),
+(8, 'Katarzyna', 'Woźniak', '507808909', 'katarzyna.wozniak@example.com', 'TEST_HASH_8', 'kucharz'),
+(9, 'Piotr', 'Kozłowski', '508909001', 'piotr.kozlowski@example.com', 'TEST_HASH_9', 'kelner'),
+(10, 'Magdalena', 'Jankowska', '509001102', 'magdalena.jankowska@example.com', 'TEST_HASH_10', 'manager');
 
 
 -- =====================================================
@@ -300,8 +304,9 @@ VALUES
 (2, 4, 'Sommelier',
  'Odpowiada za dobór win i obsługę wine pairingu.'),
 
-(3, 5, 'Manager restauracji',
- 'Odpowiada za organizację rezerwacji i obsługę gości.');
+(3, 5, 'Manager restauracji','Odpowiada za organizację rezerwacji i obsługę gości.'),
+ (4, 6, 'Barman', 'Odpowiada za przygotowywanie autorskich koktajli i obsługę strefy barowej.'),
+(5, 7, 'Starszy kelner', 'Odpowiada za bezpośrednią obsługę stolików VIP oraz koordynację serwisu na sali.');
 
 
 -- =====================================================
@@ -318,7 +323,13 @@ VALUES
  'Napoje dostępne w restauracji.', 2),
 
 (3, NULL, 'Usługi restauracyjne', 'uslugi-restauracyjne',
- 'Dodatkowe usługi oferowane przez restaurację.', 3);
+ 'Dodatkowe usługi oferowane przez restaurację.', 3),
+ 
+ (4, NULL, 'Dania główne', 'dania-glowne',
+ 'Autorskie dania mięsne, rybne oraz wegetariańskie.', 4),
+
+(5, NULL, 'Desery', 'desery',
+ 'Słodkie propozycje i kompozycje owocowe wykańczane na miejscu.', 5);;
 
 
 -- =====================================================
@@ -385,18 +396,28 @@ VALUES
 INSERT INTO employee_services
 (employee_id, service_id)
 VALUES
+-- Pracownik 1 (Szef kuchni)
 (1, 1),
 (1, 2),
 (1, 3),
 
+-- Pracownik 2 (Sommelier)
 (2, 4),
 (2, 5),
 
+-- Pracownik 3 (Manager restauracji)
 (3, 1),
 (3, 2),
 (3, 3),
-(3, 6);
+(3, 6),
 
+-- Pracownik 4 (Barman)
+(4, 5),
+
+-- Pracownik 5 (Starszy kelner)
+(5, 1),
+(5, 2),
+(5, 6);
 
 -- =====================================================
 -- 7. DOSTĘPNOŚĆ PRACOWNIKÓW
@@ -434,7 +455,22 @@ VALUES
 (3, 3, '12:00:00', '20:00:00'),
 (3, 4, '12:00:00', '20:00:00'),
 (3, 5, '12:00:00', '22:00:00'),
-(3, 6, '12:00:00', '22:00:00');
+(3, 6, '12:00:00', '22:00:00'),
+
+-- Barman - praca popołudniowa/wieczorna, w weekendy dłużej
+(4, 2, '16:00:00', '22:00:00'),
+(4, 3, '16:00:00', '22:00:00'),
+(4, 4, '16:00:00', '22:00:00'),
+(4, 5, '16:00:00', '00:00:00'),
+(4, 6, '16:00:00', '00:00:00'),
+
+-- Starszy kelner - zmiany na sali pokrywające się z Szefem kuchni
+(5, 1, '14:00:00', '22:00:00'),
+(5, 2, '14:00:00', '22:00:00'),
+(5, 3, '14:00:00', '22:00:00'),
+(5, 4, '14:00:00', '22:00:00'),
+(5, 5, '14:00:00', '23:00:00'),
+(5, 6, '14:00:00', '23:00:00');
 
 
 -- =====================================================
@@ -455,4 +491,9 @@ VALUES
 (2, 2, 2, 4,
  '2026-10-10', '19:00:00', '21:00:00',
  4, 'pending',
- 'Prośba o dobór win do menu.');
+ 'Prośba o dobór win do menu.'),
+
+ (3, 3, 5, 6,
+ '2026-10-15', '18:00:00', '21:00:00',
+ 8, 'confirmed',
+ 'Spotkanie biznesowe, prośba o dyskrecję i szybką obsługę.');
