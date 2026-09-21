@@ -285,10 +285,10 @@ VALUES
 (4, 'Maria', 'Wójcik', '503604705', 'maria.wojcik@example.com', 'TEST_HASH_4', 'employee'),
 (5, 'Tomasz', 'Kaczmarek', '504605706', 'tomasz.kaczmarek@example.com', 'TEST_HASH_5', 'employee'),
 (6, 'Adam', 'Zieliński', '505606707', 'adam.zielinski@example.com', 'TEST_HASH_6', 'admin'),
-(7, 'Michał', 'Szymański', '506707808', 'michal.szymanski@example.com', 'TEST_HASH_7', 'kelner'),
-(8, 'Katarzyna', 'Woźniak', '507808909', 'katarzyna.wozniak@example.com', 'TEST_HASH_8', 'kucharz'),
-(9, 'Piotr', 'Kozłowski', '508909001', 'piotr.kozlowski@example.com', 'TEST_HASH_9', 'kelner'),
-(10, 'Magdalena', 'Jankowska', '509001102', 'magdalena.jankowska@example.com', 'TEST_HASH_10', 'manager');
+(7, 'Michał', 'Szymański', '506707808', 'michal.szymanski@example.com', 'TEST_HASH_7', 'employee'),
+(8, 'Katarzyna', 'Woźniak', '507808909', 'katarzyna.wozniak@example.com', 'TEST_HASH_8', 'employee'),
+(9, 'Piotr', 'Kozłowski', '508909001', 'piotr.kozlowski@example.com', 'TEST_HASH_9', 'employee'),
+(10, 'Magdalena', 'Jankowska', '509001102', 'magdalena.jankowska@example.com', 'TEST_HASH_10', 'employee');
 
 
 -- =====================================================
@@ -305,8 +305,10 @@ VALUES
  'Odpowiada za dobór win i obsługę wine pairingu.'),
 
 (3, 5, 'Manager restauracji','Odpowiada za organizację rezerwacji i obsługę gości.'),
- (4, 6, 'Barman', 'Odpowiada za przygotowywanie autorskich koktajli i obsługę strefy barowej.'),
-(5, 7, 'Starszy kelner', 'Odpowiada za bezpośrednią obsługę stolików VIP oraz koordynację serwisu na sali.');
+ (4, 8, 'Barman', 'Odpowiada za przygotowywanie autorskich koktajli i obsługę strefy barowej.'),
+(5, 7, 'Starszy kelner', 'Odpowiada za bezpośrednią obsługę stolików VIP oraz koordynację serwisu na sali.'),
+(6, 9, 'Kelner', 'Obsługa sali - serwis dań i napojów.'),
+(7, 10, 'Kierownik zmiany', 'Nadzór nad organizacją pracy na sali.');
 
 
 -- =====================================================
