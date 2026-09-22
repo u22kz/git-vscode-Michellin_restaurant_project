@@ -1,8 +1,8 @@
-# System rezerwacju usług restauracji Michellin<br>
+### System rezerwacju usług restauracji Michellin<br>
 
-# Autorzy projektu: Krzysztof Zańko i Bruno Toczyński
+### Autorzy projektu: Krzysztof Zańko i Bruno Toczyński
 
-### Dodano listę ignorowanych plików ".gitignore" która nie śledzi plików ,które i tak są niewpływające lub automatycznie generowane.
+Dodano listę ignorowanych plików ".gitignore" która nie śledzi plików ,które i tak są niewpływające lub automatycznie generowane.
 
 ## Baza danych
 
