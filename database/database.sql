@@ -47,13 +47,12 @@ CREATE TABLE employees (
 
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
-    CONSTRAINT fk_employees_user
-        FOREIGN KEY (user_id)
-        REFERENCES users(user_id)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT
+    CONSTRAINT fk_employees_user     --ograniczenie
+        FOREIGN KEY (user_id)        --klucz obcy
+        REFERENCES users(user_id)    --wartość w tej kolumnie MUSI dokładnie odpowiadać jakiemuś user id z tabeli users
+        ON UPDATE CASCADE            --ID użytkownika w głównej tabeli users zostałoby zmienione, baza danych automatycznie zaktualizuje to ID we wszystkich jego rezerwacjach
+        ON DELETE RESTRICT           --jeśli użytkownik ma przypisane rezerwacje i ktoś próbuje go usungć to nie zrobi tego ponieważ powstały by pola widmo
 );
-
 
 -- =====================================================
 -- 3. KATEGORIE I PODKATEGORIE
@@ -212,7 +211,7 @@ CREATE TABLE reservations (
 
     guest_count INT UNSIGNED NOT NULL,
 
-    status ENUM(
+    status ENUM(       --w tej kolumnie możesz wpisać TYLKO i wyłącznie jedno ze słów podanych w nawiasie:
         'pending',
         'confirmed',
         'cancelled',
@@ -234,11 +233,11 @@ CREATE TABLE reservations (
     CONSTRAINT chk_reservations_guests
         CHECK (guest_count > 0),
 
-    CONSTRAINT fk_reservations_user
-        FOREIGN KEY (user_id)
-        REFERENCES users(user_id)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
+    CONSTRAINT fk_reservations_user  --ograniczenie
+        FOREIGN KEY (user_id)        --klucz obcy
+        REFERENCES users(user_id)   --wartość w tej kolumnie MUSI dokładnie odpowiadać jakiemuś user_id z tabeli users
+        ON UPDATE CASCADE           --ID użytkownika w głównej tabeli users zostałoby zmienione, baza danych automatycznie zaktualizuje to ID we wszystkich jego rezerwacjach
+        ON DELETE RESTRICT,         --jeśli użytkownik ma przypisane rezerwacje i ktoś próbuje go usunąć to nie zrobi tego ponieważ powstały by pola widmo
 
     CONSTRAINT fk_reservations_employee
         FOREIGN KEY (employee_id)
@@ -252,7 +251,7 @@ CREATE TABLE reservations (
         ON UPDATE CASCADE
         ON DELETE RESTRICT,
 
-    INDEX idx_reservations_user
+    INDEX idx_reservations_user     --przyspieszy wyszukiwanie tutaj rezerwacji danego usera
         (user_id),
 
     INDEX idx_reservations_employee_date
