@@ -32,6 +32,12 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE users                   --dodanie limitu prób logowania
+    ADD COLUMN failed_login_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0
+        AFTER is_active,
+    ADD COLUMN locked_until DATETIME NULL DEFAULT NULL
+        AFTER failed_login_attempts;
+
 
 -- =====================================================
 -- 2. PRACOWNICY

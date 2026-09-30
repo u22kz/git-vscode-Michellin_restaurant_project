@@ -19,6 +19,10 @@ $success = false;
 // --- Obsługa zmiany roli użytkownika ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'change_role') {
 
+    if (!csrf_verify()) {
+        $errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
+    }
+
     $target_id = filter_input(INPUT_POST, 'user_id', FILTER_VALIDATE_INT);
     $new_role  = $_POST['role'] ?? '';
 
@@ -46,6 +50,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // --- Obsługa aktywacji / dezaktywacji konta ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_active') {
+
+    if (!csrf_verify()) {
+        $errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
+    }
 
     $target_id = filter_input(INPUT_POST, 'user_id', FILTER_VALIDATE_INT);
 
@@ -159,6 +167,7 @@ try {
                                             <span class="text-muted small">To Twoje konto</span>
                                         <?php else: ?>
                                             <form method="post" action="dashboard_admin.php" class="d-flex gap-2">
+                                                <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="change_role">
                                                 <input type="hidden" name="user_id" value="<?= (int) $u['user_id'] ?>">
                                                 <select name="role" class="form-select form-select-sm">
@@ -176,6 +185,7 @@ try {
                                     <td>
                                         <?php if (!$is_self): ?>
                                             <form method="post" action="dashboard_admin.php">
+                                                <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="toggle_active">
                                                 <input type="hidden" name="user_id" value="<?= (int) $u['user_id'] ?>">
                                                 <?php if ((int) $u['is_active'] === 1): ?>

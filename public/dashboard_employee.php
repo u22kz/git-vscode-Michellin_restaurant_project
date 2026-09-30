@@ -42,6 +42,10 @@ $employee_id = $employee ? (int) $employee['employee_id'] : null;
 // --- Obsługa zmiany statusu rezerwacji ---
 if ($employee_id !== null && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
+    if (!csrf_verify()) {
+        $errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
+    }
+
     $reservation_id = filter_input(INPUT_POST, 'reservation_id', FILTER_VALIDATE_INT);
     $new_status     = $_POST['status'] ?? '';
 
@@ -186,6 +190,7 @@ if ($employee_id !== null) {
                                         <td><span class="badge <?= htmlspecialchars($status_class, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($status_label, ENT_QUOTES, 'UTF-8') ?></span></td>
                                         <td>
                                             <form method="post" action="dashboard_employee.php" class="d-flex gap-2">
+                                                <?= csrf_field() ?>
                                                 <input type="hidden" name="reservation_id" value="<?= (int) $r['reservation_id'] ?>">
                                                 <select name="status" class="form-select form-select-sm">
                                                     <?php foreach ($allowed_statuses as $status_option): ?>

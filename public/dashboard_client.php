@@ -38,6 +38,10 @@ try {
 // --- Obsługa formularza nowej rezerwacji ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
+    if (!csrf_verify()) {
+        $errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
+    }
+
     $service_id = filter_input(INPUT_POST, 'service_id', FILTER_VALIDATE_INT);
     $date       = trim($_POST['reservation_date'] ?? '');
     $time       = trim($_POST['start_time'] ?? '');
@@ -48,8 +52,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$service_id) {
         $errors[] = 'Wybierz usługę.';
     }
-    if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+    if ($date === '' || !preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $date_parts)) {
         $errors[] = 'Podaj poprawną datę rezerwacji.';
+    } elseif (!checkdate((int) $date_parts[2], (int) $date_parts[3], (int) $date_parts[1])) {
+        // Format zgadzał się z wzorcem (np. "2026-02-31"), ale taki dzień
+        // nie istnieje w kalendarzu - checkdate() to wyłapuje.
+        $errors[] = 'Podana data nie istnieje w kalendarzu.';
     } elseif ($date < date('Y-m-d')) {
         $errors[] = 'Data rezerwacji nie może być z przeszłości.';
     }
@@ -89,7 +97,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors) && $service !== null) {
         $start_time = $time . ':00';
         $end_timestamp = strtotime($date . ' ' . $start_time) + ((int) $service['duration_minutes'] * 60);
-        $end_time = date('H:i:s', $end_timestamp);
+
+        // Tabela reservations wymaga (CHECK), żeby start_time < end_time w obrębie
+        // tej samej doby. Jeśli usługa zaczęta o wybranej godzinie kończyłaby się
+        // już następnego dnia, taki termin jest niemożliwy do zapisania - wykrywamy
+        // to tutaj i pokazujemy zrozumiały komunikat zamiast generycznego błędu bazy.
+        if (date('Y-m-d', $end_timestamp) !== $date) {
+            $errors[] = 'O tej porze usługa nie zdąży się zakończyć przed północą. Wybierz wcześniejszą godzinę rozpoczęcia.';
+        } else {
+            $end_time = date('H:i:s', $end_timestamp);
+        }
     }
 
     // --- Znalezienie pracownika obsługującego wybraną usługę ---
@@ -220,6 +237,7 @@ $status_labels = [
                 <p class="text-muted mb-0">Obecnie brak dostępnych usług do zarezerwowania.</p>
             <?php else: ?>
                 <form method="post" action="dashboard_client.php" class="row g-3">
+                    <?= csrf_field() ?>
                     <div class="col-md-6">
                         <label for="service_id" class="form-label">Usługa</label>
                         <select class="form-select" id="service_id" name="service_id" required>

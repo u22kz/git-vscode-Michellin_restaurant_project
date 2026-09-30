@@ -98,3 +98,61 @@ function dashboard_url_for_role(string $role): string
             return 'dashboard_client.php';
     }
 }
+
+/**
+ * ------------------------------------------------------------------
+ * OCHRONA CSRF (Cross-Site Request Forgery)
+ * ------------------------------------------------------------------
+ * Token CSRF to losowy, jednorazowy "sekret" zapisywany w sesji
+ * użytkownika i jednocześnie wysyłany jako ukryte pole w każdym
+ * formularzu POST. Przy odbiorze formularza sprawdzamy, czy token
+ * z formularza zgadza się z tokenem w sesji - jeśli nie, żądanie
+ * nie mogło pochodzić z naszego formularza (np. z innej, złośliwej
+ * strony), więc je odrzucamy.
+ */
+
+/**
+ * Zwraca aktualny token CSRF dla sesji użytkownika.
+ * Jeśli token jeszcze nie istnieje - tworzy nowy, kryptograficznie
+ * bezpieczny token (random_bytes) i zapisuje go w sesji.
+ * Ten sam token jest używany dla wszystkich formularzy w obrębie
+ * jednej sesji (nie trzeba go tworzyć od nowa przy każdym formularzu).
+ */
+function csrf_token(): string
+{
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+/**
+ * Zwraca gotowy znacznik <input type="hidden"> z tokenem CSRF,
+ * do wstawienia wewnątrz każdego formularza POST.
+ */
+function csrf_field(): string
+{
+    $token = htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8');
+    return '<input type="hidden" name="csrf_token" value="' . $token . '">';
+}
+
+/**
+ * Sprawdza, czy token CSRF przesłany w formularzu (POST) zgadza się
+ * z tokenem zapisanym w sesji. Używa hash_equals() zamiast zwykłego
+ * porównania "===", żeby uniknąć tzw. ataku czasowego (timing attack).
+ *
+ * Wywoływana na samym początku obsługi każdego żądania POST,
+ * zanim jakiekolwiek dane z formularza zostaną użyte.
+ *
+ * @return bool true, jeśli token jest poprawny
+ */
+function csrf_verify(): bool
+{
+    $sent_token = $_POST['csrf_token'] ?? '';
+
+    if (!is_string($sent_token) || $sent_token === '' || empty($_SESSION['csrf_token'])) {
+        return false;
+    }
+
+    return hash_equals($_SESSION['csrf_token'], $sent_token);
+}

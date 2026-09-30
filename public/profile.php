@@ -40,6 +40,10 @@ try {
 // --- Obsługa formularza edycji danych (imię, nazwisko, telefon) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_info'])) {
 
+    if (!csrf_verify()) {
+        $info_errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
+    }
+
     $name    = trim($_POST['name'] ?? '');
     $surname = trim($_POST['surname'] ?? '');
     $phone   = trim($_POST['phone'] ?? '');
@@ -86,6 +90,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_info'])) {
 
 // --- Obsługa formularza zmiany hasła ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
+
+    if (!csrf_verify()) {
+        $password_errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
+    }
 
     $current_password = $_POST['current_password'] ?? '';
     $new_password      = $_POST['new_password'] ?? '';
@@ -155,6 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
             <?php endif; ?>
 
             <form method="post" action="profile.php">
+                <?= csrf_field() ?>
                 <input type="hidden" name="update_info" value="1">
 
                 <div class="mb-3">
@@ -204,6 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
             <?php endif; ?>
 
             <form method="post" action="profile.php">
+                <?= csrf_field() ?>
                 <input type="hidden" name="change_password" value="1">
 
                 <div class="mb-3">

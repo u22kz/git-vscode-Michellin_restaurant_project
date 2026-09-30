@@ -26,6 +26,11 @@ $old = [
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
+    // --- Weryfikacja tokenu CSRF - zawsze jako pierwszy krok obsługi POST ---
+    if (!csrf_verify()) {
+        $errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
+    }
+
     // --- Pobranie i wstępne oczyszczenie danych wejściowych ---
     $name             = trim($_POST['name'] ?? '');
     $surname          = trim($_POST['surname'] ?? '');
@@ -92,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($errors)) {
         try {
             // password_hash tworzy bezpieczny, "solony" hash hasła - hasło
-            // NIGDY nie jest zapisywane w bazie jako czysty tekst.            --->trzeba sprawdzić i przetestować
+            // NIGDY nie jest zapisywane w bazie jako czysty tekst.
             $password_hash = password_hash($password, PASSWORD_DEFAULT);
 
             $stmt = $pdo->prepare(
@@ -149,6 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php endif; ?>
 
     <form method="post" action="register.php" class="bg-white p-4 rounded-3 shadow-sm" novalidate>
+        <?= csrf_field() ?>
         <div class="mb-3">
             <label for="name" class="form-label">Imię</label>
             <input type="text" class="form-control" id="name" name="name" maxlength="50"
