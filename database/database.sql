@@ -29,14 +29,11 @@ CREATE TABLE users (
 
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
+    failed_login_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    locked_until DATETIME NULL DEFAULT NULL,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-
-ALTER TABLE users                   --dodanie limitu prób logowania
-    ADD COLUMN failed_login_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0
-        AFTER is_active,
-    ADD COLUMN locked_until DATETIME NULL DEFAULT NULL
-        AFTER failed_login_attempts;
 
 
 -- =====================================================
@@ -53,13 +50,12 @@ CREATE TABLE employees (
 
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
-    CONSTRAINT fk_employees_user
-        FOREIGN KEY (user_id)
-        REFERENCES users(user_id)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT
+    CONSTRAINT fk_employees_user     --ograniczenie
+        FOREIGN KEY (user_id)        --klucz obcy
+        REFERENCES users(user_id)    --wartość w tej kolumnie MUSI dokładnie odpowiadać jakiemuś user id z tabeli users
+        ON UPDATE CASCADE            --ID użytkownika w głównej tabeli users zostałoby zmienione, baza danych automatycznie zaktualizuje to ID we wszystkich jego rezerwacjach
+        ON DELETE RESTRICT           --jeśli użytkownik ma przypisane rezerwacje i ktoś próbuje go usungć to nie zrobi tego ponieważ powstały by pola widmo
 );
-
 
 -- =====================================================
 -- 3. KATEGORIE I PODKATEGORIE
@@ -218,7 +214,7 @@ CREATE TABLE reservations (
 
     guest_count INT UNSIGNED NOT NULL,
 
-    status ENUM(
+    status ENUM(       --w tej kolumnie możesz wpisać TYLKO i wyłącznie jedno ze słów podanych w nawiasie:
         'pending',
         'confirmed',
         'cancelled',
@@ -240,11 +236,11 @@ CREATE TABLE reservations (
     CONSTRAINT chk_reservations_guests
         CHECK (guest_count > 0),
 
-    CONSTRAINT fk_reservations_user
-        FOREIGN KEY (user_id)
-        REFERENCES users(user_id)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT,
+    CONSTRAINT fk_reservations_user  --ograniczenie
+        FOREIGN KEY (user_id)        --klucz obcy
+        REFERENCES users(user_id)   --wartość w tej kolumnie MUSI dokładnie odpowiadać jakiemuś user_id z tabeli users
+        ON UPDATE CASCADE           --ID użytkownika w głównej tabeli users zostałoby zmienione, baza danych automatycznie zaktualizuje to ID we wszystkich jego rezerwacjach
+        ON DELETE RESTRICT,         --jeśli użytkownik ma przypisane rezerwacje i ktoś próbuje go usunąć to nie zrobi tego ponieważ powstały by pola widmo
 
     CONSTRAINT fk_reservations_employee
         FOREIGN KEY (employee_id)
@@ -258,7 +254,7 @@ CREATE TABLE reservations (
         ON UPDATE CASCADE
         ON DELETE RESTRICT,
 
-    INDEX idx_reservations_user
+    INDEX idx_reservations_user     --przyspieszy wyszukiwanie tutaj rezerwacji danego usera
         (user_id),
 
     INDEX idx_reservations_employee_date
@@ -275,6 +271,8 @@ CREATE TABLE reservations (
 );
 -- =====================================================
 -- DANE TESTOWE
+-- UWAGA: PLACEHOLDER_HASH_* to wartosci przykladowe, NIE sa hashami hasel.
+-- Przed testowaniem logowania zastap je wynikami PHP password_hash().
 -- =====================================================
 
 
@@ -285,16 +283,16 @@ CREATE TABLE reservations (
 INSERT INTO users
 (user_id, name, surname, customer_phone, customer_email, password, role)
 VALUES
-(1, 'Jan', 'Kowalski', '500600700', 'jan.kowalski@example.com', 'TEST_HASH_1', 'client'),
-(2, 'Anna', 'Nowak', '501602703', 'anna.nowak@example.com', 'TEST_HASH_2', 'client'),
-(3, 'Piotr', 'Wiśniewski', '502603704', 'piotr.wisniewski@example.com', 'TEST_HASH_3', 'employee'),
-(4, 'Maria', 'Wójcik', '503604705', 'maria.wojcik@example.com', 'TEST_HASH_4', 'employee'),
-(5, 'Tomasz', 'Kaczmarek', '504605706', 'tomasz.kaczmarek@example.com', 'TEST_HASH_5', 'employee'),
-(6, 'Adam', 'Zieliński', '505606707', 'adam.zielinski@example.com', 'TEST_HASH_6', 'admin'),
-(7, 'Michał', 'Szymański', '506707808', 'michal.szymanski@example.com', 'TEST_HASH_7', 'employee'),
-(8, 'Katarzyna', 'Woźniak', '507808909', 'katarzyna.wozniak@example.com', 'TEST_HASH_8', 'employee'),
-(9, 'Piotr', 'Kozłowski', '508909001', 'piotr.kozlowski@example.com', 'TEST_HASH_9', 'employee'),
-(10, 'Magdalena', 'Jankowska', '509001102', 'magdalena.jankowska@example.com', 'TEST_HASH_10', 'employee');
+(1, 'Jan', 'Kowalski', '500600700', 'jan.kowalski@example.com', 'PLACEHOLDER_HASH_1', 'client'),
+(2, 'Anna', 'Nowak', '501602703', 'anna.nowak@example.com', 'PLACEHOLDER_HASH_2', 'client'),
+(3, 'Piotr', 'Wiśniewski', '502603704', 'piotr.wisniewski@example.com', 'PLACEHOLDER_HASH_3', 'employee'),
+(4, 'Maria', 'Wójcik', '503604705', 'maria.wojcik@example.com', 'PLACEHOLDER_HASH_4', 'employee'),
+(5, 'Tomasz', 'Kaczmarek', '504605706', 'tomasz.kaczmarek@example.com', 'PLACEHOLDER_HASH_5', 'employee'),
+(6, 'Adam', 'Zieliński', '505606707', 'adam.zielinski@example.com', 'PLACEHOLDER_HASH_6', 'admin'),
+(7, 'Michał', 'Szymański', '506707808', 'michal.szymanski@example.com', 'PLACEHOLDER_HASH_7', 'employee'),
+(8, 'Katarzyna', 'Woźniak', '507808909', 'katarzyna.wozniak@example.com', 'PLACEHOLDER_HASH_8', 'employee'),
+(9, 'Piotr', 'Kozłowski', '508909001', 'piotr.kozlowski@example.com', 'PLACEHOLDER_HASH_9', 'employee'),
+(10, 'Magdalena', 'Jankowska', '509001102', 'magdalena.jankowska@example.com', 'PLACEHOLDER_HASH_10', 'employee');
 
 
 -- =====================================================
@@ -337,7 +335,7 @@ VALUES
  'Autorskie dania mięsne, rybne oraz wegetariańskie.', 4),
 
 (5, NULL, 'Desery', 'desery',
- 'Słodkie propozycje i kompozycje owocowe wykańczane na miejscu.', 5);;
+ 'Słodkie propozycje i kompozycje owocowe wykańczane na miejscu.', 5);
 
 
 -- =====================================================
@@ -347,19 +345,19 @@ VALUES
 INSERT INTO categories
 (category_id, parent_id, name, slug, description, sort_order)
 VALUES
-(4, 1, 'Menu sezonowe', 'menu-sezonowe',
+(6, 1, 'Menu sezonowe', 'menu-sezonowe',
  'Menu oparte na sezonowych składnikach.', 1),
 
-(5, 1, 'Menu specjalne', 'menu-specjalne',
+(7, 1, 'Menu specjalne', 'menu-specjalne',
  'Specjalne propozycje szefa kuchni.', 2),
 
-(6, 2, 'Wina', 'wina',
+(8, 2, 'Wina', 'wina',
  'Starannie wybrane wina.', 1),
 
-(7, 2, 'Napoje bezalkoholowe', 'napoje-bezalkoholowe',
+(9, 2, 'Napoje bezalkoholowe', 'napoje-bezalkoholowe',
  'Napoje bezalkoholowe.', 2),
 
-(8, 3, 'Sala prywatna', 'sala-prywatna',
+(10, 3, 'Sala prywatna', 'sala-prywatna',
  'Rezerwacja prywatnej przestrzeni.', 1);
 
 
@@ -371,27 +369,27 @@ INSERT INTO services
 (service_id, category_id, name, description, price, unit,
  is_available, duration_minutes)
 VALUES
-(1, 4, 'Menu degustacyjne 5 dań',
+(1, 6, 'Menu degustacyjne 5 dań',
  'Sezonowe menu degustacyjne składające się z pięciu dań.',
  350.00, 'osoba', TRUE, 120),
 
-(2, 4, 'Menu degustacyjne 7 dań',
+(2, 6, 'Menu degustacyjne 7 dań',
  'Sezonowe menu degustacyjne składające się z siedmiu dań.',
  490.00, 'osoba', TRUE, 150),
 
-(3, 5, 'Kolacja specjalna szefa kuchni',
+(3, 7, 'Kolacja specjalna szefa kuchni',
  'Autorskie menu przygotowane przez szefa kuchni.',
  650.00, 'osoba', TRUE, 180),
 
-(4, 6, 'Wine pairing',
+(4, 8, 'Wine pairing',
  'Dobór win do kolejnych dań menu degustacyjnego.',
  250.00, 'osoba', TRUE, 120),
 
-(5, 7, 'Menu bezalkoholowe',
+(5, 9, 'Menu bezalkoholowe',
  'Degustacyjne napoje bezalkoholowe.',
  150.00, 'osoba', TRUE, 90),
 
-(6, 8, 'Rezerwacja sali prywatnej',
+(6, 10, 'Rezerwacja sali prywatnej',
  'Możliwość zorganizowania kolacji w prywatnej sali.',
  1000.00, 'godz.', TRUE, 180);
 
@@ -469,8 +467,8 @@ VALUES
 (4, 2, '16:00:00', '22:00:00'),
 (4, 3, '16:00:00', '22:00:00'),
 (4, 4, '16:00:00', '22:00:00'),
-(4, 5, '16:00:00', '00:00:00'),
-(4, 6, '16:00:00', '00:00:00'),
+(4, 5, '16:00:00', '23:59:59'),
+(4, 6, '16:00:00', '23:59:59'),
 
 -- Starszy kelner - zmiany na sali pokrywające się z Szefem kuchni
 (5, 1, '14:00:00', '22:00:00'),
