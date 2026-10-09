@@ -2,11 +2,8 @@
 -- BAZA DANYCH - MICHELIN RESTAURANT
 -- =====================================================
 
-CREATE DATABASE IF NOT EXISTS michelin_restaurant
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_unicode_ci;
-
-USE michelin_restaurant;
+-- Importuj do uprzednio wybranej, pustej bazy w phpMyAdmin.
+-- Nie wykonuj na bazie zawierajacej wazne dane.
 
 
 -- =====================================================
@@ -29,9 +26,6 @@ CREATE TABLE users (
 
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
-    failed_login_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    locked_until DATETIME NULL DEFAULT NULL,
-
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -50,12 +44,13 @@ CREATE TABLE employees (
 
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
-    CONSTRAINT fk_employees_user     --ograniczenie
-        FOREIGN KEY (user_id)        --klucz obcy
-        REFERENCES users(user_id)    --wartość w tej kolumnie MUSI dokładnie odpowiadać jakiemuś user id z tabeli users
-        ON UPDATE CASCADE            --ID użytkownika w głównej tabeli users zostałoby zmienione, baza danych automatycznie zaktualizuje to ID we wszystkich jego rezerwacjach
-        ON DELETE RESTRICT           --jeśli użytkownik ma przypisane rezerwacje i ktoś próbuje go usungć to nie zrobi tego ponieważ powstały by pola widmo
+    CONSTRAINT fk_employees_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT
 );
+
 
 -- =====================================================
 -- 3. KATEGORIE I PODKATEGORIE
@@ -214,7 +209,7 @@ CREATE TABLE reservations (
 
     guest_count INT UNSIGNED NOT NULL,
 
-    status ENUM(       --w tej kolumnie możesz wpisać TYLKO i wyłącznie jedno ze słów podanych w nawiasie:
+    status ENUM(
         'pending',
         'confirmed',
         'cancelled',
@@ -236,11 +231,11 @@ CREATE TABLE reservations (
     CONSTRAINT chk_reservations_guests
         CHECK (guest_count > 0),
 
-    CONSTRAINT fk_reservations_user  --ograniczenie
-        FOREIGN KEY (user_id)        --klucz obcy
-        REFERENCES users(user_id)   --wartość w tej kolumnie MUSI dokładnie odpowiadać jakiemuś user_id z tabeli users
-        ON UPDATE CASCADE           --ID użytkownika w głównej tabeli users zostałoby zmienione, baza danych automatycznie zaktualizuje to ID we wszystkich jego rezerwacjach
-        ON DELETE RESTRICT,         --jeśli użytkownik ma przypisane rezerwacje i ktoś próbuje go usunąć to nie zrobi tego ponieważ powstały by pola widmo
+    CONSTRAINT fk_reservations_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
 
     CONSTRAINT fk_reservations_employee
         FOREIGN KEY (employee_id)
@@ -254,7 +249,7 @@ CREATE TABLE reservations (
         ON UPDATE CASCADE
         ON DELETE RESTRICT,
 
-    INDEX idx_reservations_user     --przyspieszy wyszukiwanie tutaj rezerwacji danego usera
+    INDEX idx_reservations_user
         (user_id),
 
     INDEX idx_reservations_employee_date
@@ -271,8 +266,6 @@ CREATE TABLE reservations (
 );
 -- =====================================================
 -- DANE TESTOWE
--- UWAGA: PLACEHOLDER_HASH_* to wartosci przykladowe, NIE sa hashami hasel.
--- Przed testowaniem logowania zastap je wynikami PHP password_hash().
 -- =====================================================
 
 
@@ -283,16 +276,16 @@ CREATE TABLE reservations (
 INSERT INTO users
 (user_id, name, surname, customer_phone, customer_email, password, role)
 VALUES
-(1, 'Jan', 'Kowalski', '500600700', 'jan.kowalski@example.com', 'PLACEHOLDER_HASH_1', 'client'),
-(2, 'Anna', 'Nowak', '501602703', 'anna.nowak@example.com', 'PLACEHOLDER_HASH_2', 'client'),
-(3, 'Piotr', 'Wiśniewski', '502603704', 'piotr.wisniewski@example.com', 'PLACEHOLDER_HASH_3', 'employee'),
-(4, 'Maria', 'Wójcik', '503604705', 'maria.wojcik@example.com', 'PLACEHOLDER_HASH_4', 'employee'),
-(5, 'Tomasz', 'Kaczmarek', '504605706', 'tomasz.kaczmarek@example.com', 'PLACEHOLDER_HASH_5', 'employee'),
-(6, 'Adam', 'Zieliński', '505606707', 'adam.zielinski@example.com', 'PLACEHOLDER_HASH_6', 'admin'),
-(7, 'Michał', 'Szymański', '506707808', 'michal.szymanski@example.com', 'PLACEHOLDER_HASH_7', 'employee'),
-(8, 'Katarzyna', 'Woźniak', '507808909', 'katarzyna.wozniak@example.com', 'PLACEHOLDER_HASH_8', 'employee'),
-(9, 'Piotr', 'Kozłowski', '508909001', 'piotr.kozlowski@example.com', 'PLACEHOLDER_HASH_9', 'employee'),
-(10, 'Magdalena', 'Jankowska', '509001102', 'magdalena.jankowska@example.com', 'PLACEHOLDER_HASH_10', 'employee');
+(1, 'Jan', 'Kowalski', '500600700', 'jan.kowalski@example.com', 'TEST_HASH_1', 'client'),
+(2, 'Anna', 'Nowak', '501602703', 'anna.nowak@example.com', 'TEST_HASH_2', 'client'),
+(3, 'Piotr', 'Wiśniewski', '502603704', 'piotr.wisniewski@example.com', 'TEST_HASH_3', 'employee'),
+(4, 'Maria', 'Wójcik', '503604705', 'maria.wojcik@example.com', 'TEST_HASH_4', 'employee'),
+(5, 'Tomasz', 'Kaczmarek', '504605706', 'tomasz.kaczmarek@example.com', 'TEST_HASH_5', 'employee'),
+(6, 'Adam', 'Zieliński', '505606707', 'adam.zielinski@example.com', 'TEST_HASH_6', 'admin'),
+(7, 'Michał', 'Szymański', '506707808', 'michal.szymanski@example.com', 'TEST_HASH_7', 'employee'),
+(8, 'Katarzyna', 'Woźniak', '507808909', 'katarzyna.wozniak@example.com', 'TEST_HASH_8', 'employee'),
+(9, 'Piotr', 'Kozłowski', '508909001', 'piotr.kozlowski@example.com', 'TEST_HASH_9', 'employee'),
+(10, 'Magdalena', 'Jankowska', '509001102', 'magdalena.jankowska@example.com', 'TEST_HASH_10', 'employee');
 
 
 -- =====================================================
