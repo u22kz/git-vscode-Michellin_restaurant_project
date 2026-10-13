@@ -15,7 +15,7 @@ Dodano plik `.gitignore`, który wyklucza ze śledzenia zbędne pliki, pliki gen
 ## Wykorzystane technologie
 
 - PHP – obsługa logiki aplikacji.
-- MySQL/MariaDB – przechowywanie danych.
+- MySQL – przechowywanie danych.
 - HTML5 i CSS3 – struktura i wygląd strony.
 - JavaScript – interaktywne elementy aplikacji.
 - Git i GitHub – kontrola wersji.
@@ -44,7 +44,7 @@ Wraz z rozwojem projektu będą dodawane kolejne pliki odpowiedzialne za panele 
 
 ## Baza danych
 
-Baza danych projektu została utworzona w MySQL/MariaDB.
+Baza danych projektu została utworzona w MySQL.
 
 Plik z pełną strukturą bazy oraz danymi testowymi znajduje się w:
 
@@ -72,7 +72,7 @@ W bazie zastosowano:
 
 ### Odtworzenie bazy
 
-1. Uruchomić MySQL/MariaDB.
+1. Uruchomić MySQL.
 2. Otworzyć phpMyAdmin.
 3. Utworzyć pustą bazę danych, jeżeli nie została jeszcze utworzona.
 4. Zaimportować plik `database/database.sql`.
