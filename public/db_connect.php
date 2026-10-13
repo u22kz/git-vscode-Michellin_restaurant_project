@@ -1,44 +1,46 @@
 <?php
 /**
- * Plik: db_connect.php
- * Cel: Nawiązanie bezpiecznego połączenia z bazą danych MySQL
- *      przy użyciu PDO. Plik ten jest dołączany (require) na początku
- *      każdej innej strony, która potrzebuje dostępu do bazy.
- *
- * UWAGA BEZPIECZEŃSTWA:                                                          --->trzeba poprawić
- * Dane dostępowe do bazy NIE powinny trafiać do publicznego repozytorium.
- * W tym projekcie szkolnym trzymamy je tutaj dla prostoty, ale w praktyce
- * warto wydzielić je do osobnego pliku (np. config.php) i dodać go do
- * .gitignore, żeby nie trafił na GitHuba.
+ * Polaczenie PDO z baza danych Michelin Restaurant.
+ * Wymaga pliku private/db_credentials.php poza public_html.
  */
 
-// --- Dane dostępowe do bazy danych (dostosuj do swojego środowiska) ---
-$db_host    = '127.0.0.1';
-$db_name    = 'michelin_restaurant';
-$db_user    = 'root';
-$db_pass    = '';
+$configFile = dirname(__DIR__) . '/private/db_credentials.php';
+if (!is_file($configFile)) {
+    error_log('Brak prywatnego pliku konfiguracji bazy danych.');
+    http_response_code(503);
+    exit('Wystapil problem z polaczeniem z baza danych.');
+}
+
+$config = require $configFile;
+if (!is_array($config)) {
+    error_log('Niepoprawny format konfiguracji bazy.');
+    http_response_code(503);
+    exit('Wystapil problem z polaczeniem z baza danych.');
+}
+
+$db_host = $config['host'] ?? '';
+$db_name = $config['dbname'] ?? '';
+$db_user = $config['username'] ?? '';
+$db_pass = $config['password'] ?? '';
 $db_charset = 'utf8mb4';
 
-// DSN (Data Source Name) - opisuje PDO, z jaką bazą i jak się łączyć
-$dsn = "mysql:host={$db_host};dbname={$db_name};charset={$db_charset}";
+if ($db_host === '' || $db_name === '' || $db_user === '') {
+    error_log('Niekompletna konfiguracja bazy danych.');
+    http_response_code(503);
+    exit('Wystapil problem z polaczeniem z baza danych.');
+}
 
-// Opcje PDO:
-// - ERRMODE_EXCEPTION      -> błędy PDO zamieniają się w wyjątki (łapiemy je w try-catch)
-// - FETCH_ASSOC            -> wyniki zapytań domyślnie jako tablice asocjacyjne (['kolumna' => wartość])
-// - EMULATE_PREPARES=false -> wymusza PRAWDZIWE prepared statements po stronie serwera MySQL,
-//                             a nie tylko symulowane przez PHP (dodatkowa ochrona przed SQL Injection)
+$dsn = "mysql:host={$db_host};dbname={$db_name};charset={$db_charset}";
 $options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false,
+    PDO::ATTR_EMULATE_PREPARES => false,
 ];
 
 try {
     $pdo = new PDO($dsn, $db_user, $db_pass, $options);
 } catch (PDOException $e) {
-    // Nigdy nie pokazujemy użytkownikowi szczegółów technicznych błędu
-    // (mogłyby ujawnić strukturę bazy, hasła w konfiguracji itp.).
-    // Szczegóły trafiają do logu serwera, do wiadomości tylko dla administratora.
-    error_log('Błąd połączenia z bazą danych: ' . $e->getMessage());
-    die('Wystąpił problem z połączeniem z bazą danych. Spróbuj ponownie później.');
+    error_log('Blad polaczenia PDO: ' . $e->getMessage());
+    http_response_code(503);
+    exit('Wystapil problem z polaczeniem z baza danych.');
 }
