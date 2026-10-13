@@ -4,6 +4,8 @@ Projekt aplikacji internetowej do obsługi restauracji i systemu rezerwacji.
 
 Aplikacja powstaje w ramach szkolnego projektu zespołowego. Jej celem jest umożliwienie użytkownikom zakładania kont, logowania się oraz rezerwowania usług restauracyjnych.
 
+Aktualny link do strony: https://u22kz.serv00.net/
+
 ## Organizacja projektu
 
 Projekt jest realizowany zespołowo, a jego kod źródłowy znajduje się we wspólnym repozytorium GitHub.
