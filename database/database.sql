@@ -721,3 +721,116 @@ VALUES
 8, 'confirmed',
 
 'Spotkanie biznesowe, prośba o dyskrecję i szybką obsługę.');
+\n
+-- =====================================================
+-- ROZSZERZENIA NA OCENĘ 6
+-- URLOPY, DNI WOLNE I DZIENNIK ADMINISTRATORA
+-- =====================================================
+
+-- 9. WNIOSKI URLOPOWE PRACOWNIKÓW
+
+CREATE TABLE IF NOT EXISTS employee_leave_requests (
+    leave_request_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT UNSIGNED NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    reason TEXT NULL,
+    status ENUM('pending', 'approved', 'rejected', 'cancelled')
+        NOT NULL DEFAULT 'pending',
+    reviewed_by_user_id INT UNSIGNED NULL,
+    reviewed_at DATETIME NULL,
+    admin_comment TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_employee_leave_dates
+        CHECK (end_date >= start_date),
+
+    CONSTRAINT fk_employee_leave_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_employee_leave_reviewer
+        FOREIGN KEY (reviewed_by_user_id)
+        REFERENCES users(user_id)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL,
+
+    INDEX idx_employee_leave_dates
+        (employee_id, start_date, end_date),
+    INDEX idx_employee_leave_status
+        (status, start_date, end_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- 10. INDYWIDUALNE DNI WOLNE PRACOWNIKÓW
+
+CREATE TABLE IF NOT EXISTS employee_days_off (
+    day_off_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT UNSIGNED NOT NULL,
+    day_off_date DATE NOT NULL,
+    reason VARCHAR(255) NULL,
+    created_by_user_id INT UNSIGNED NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_employee_days_off_employee
+        FOREIGN KEY (employee_id)
+        REFERENCES employees(employee_id)
+        ON UPDATE CASCADE
+        ON DELETE RESTRICT,
+
+    CONSTRAINT fk_employee_days_off_creator
+        FOREIGN KEY (created_by_user_id)
+        REFERENCES users(user_id)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL,
+
+    UNIQUE KEY uq_employee_day_off (employee_id, day_off_date),
+    INDEX idx_employee_days_off_date (day_off_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- 11. DNI ZAMKNIĘCIA CAŁEJ RESTAURACJI
+
+CREATE TABLE IF NOT EXISTS restaurant_days_off (
+    restaurant_day_off_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    day_off_date DATE NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    description TEXT NULL,
+    created_by_user_id INT UNSIGNED NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_restaurant_days_off_creator
+        FOREIGN KEY (created_by_user_id)
+        REFERENCES users(user_id)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL,
+
+    UNIQUE KEY uq_restaurant_day_off_date (day_off_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- 12. DZIENNIK DZIAŁAŃ ADMINISTRATORA
+
+CREATE TABLE IF NOT EXISTS admin_logs (
+    log_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    admin_user_id INT UNSIGNED NULL,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(100) NOT NULL,
+    entity_id INT UNSIGNED NULL,
+    details TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_admin_logs_user
+        FOREIGN KEY (admin_user_id)
+        REFERENCES users(user_id)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL,
+
+    INDEX idx_admin_logs_user_date (admin_user_id, created_at),
+    INDEX idx_admin_logs_entity (entity_type, entity_id),
+    INDEX idx_admin_logs_date (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
