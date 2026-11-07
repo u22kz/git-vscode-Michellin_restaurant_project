@@ -6,6 +6,7 @@ Aplikacja powstaje w ramach szkolnego projektu zespołowego. Jej celem jest umo�
 
 Aktualny link do strony: https://u22kz.serv00.net/
 
+Login do konta admina podany w komentarzu moodle.
 ## Organizacja projektu
 
 Projekt jest realizowany zespołowo, a jego kod źródłowy znajduje się we wspólnym repozytorium GitHub.
