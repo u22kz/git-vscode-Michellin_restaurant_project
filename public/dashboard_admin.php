@@ -77,11 +77,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 // --- Pobranie listy wszystkich użytkowników ---
 try {
-    $stmt = $pdo->query(
+    $stmt = $pdo->prepare(
         'SELECT user_id, name, surname, customer_email, customer_phone, role, is_active, created_at
          FROM users
          ORDER BY user_id'
     );
+    $stmt->execute();
     $users = $stmt->fetchAll();
 } catch (PDOException $e) {
     error_log('Błąd pobierania listy użytkowników: ' . $e->getMessage());
@@ -111,6 +112,20 @@ try {
 
 <div class="container pb-5">
     <h1 class="mb-4">Panel administratora</h1>
+
+    <nav class="card mb-4" aria-label="Zarządzanie restauracją">
+        <div class="card-body">
+            <h2 class="h5 card-title">Zarządzanie restauracją</h2>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-primary" href="admin_categories.php">Kategorie</a>
+                <a class="btn btn-outline-primary" href="admin_services.php">Usługi</a>
+                <a class="btn btn-outline-primary" href="admin_employees.php">Pracownicy</a>
+                <a class="btn btn-outline-primary" href="admin_availability.php">Grafik pracowników</a>
+                <a class="btn btn-outline-primary" href="admin_reservations.php">Rezerwacje</a>
+                <a class="btn btn-outline-primary" href="admin_stats.php">Statystyki</a>
+            </div>
+        </div>
+    </nav>
 
     <?php if ($success): ?>
         <div class="alert alert-success">Zmiana została zapisana.</div>

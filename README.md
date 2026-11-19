@@ -1,4 +1,4 @@
-# Michelin Restaurant — etapy 1 i 2
+# Michelin Restaurant — etapy 1–3 (kategorie i usługi)
 
 Samodzielna aplikacja PHP/MySQL. Wszystkie polecenia poniżej wykonuj z katalogu
 projektu, zawierającego `public`, `private` i `database`.
@@ -302,3 +302,61 @@ Nie wykonano commit/push.
 Ograniczenia: bez testów wdrożenia Apache/Nginx/HTTPS i wyglądu w przeglądarce,
 bez pełnej macierzy etapu 4 i równoległych żądań rezerwacji. Pozostałe problemy
 biznesowe etapów 3–4 opisane w audycie wymagają osobnego zadania.
+
+## Etap 3 — kategorie i usługi (19.11.2026)
+
+W panelu administratora jest nawigacja do kategorii, usług, pracowników,
+grafiku, rezerwacji i statystyk. Istniejące formularze zachowują Bootstrap.
+Kategorie można dodawać, edytować i usuwać, o ile nie mają usług ani
+podkategorii. Usługi można dodawać, edytować, przełączać ich dostępność
+i usuwać, o ile nie mają rezerwacji ani przypisań do pracowników.
+Powiązaną usługę można wyłączyć zamiast usuwać historię.
+
+Walidacja odpowiada istniejącym kolumnom SQL:
+
+- nazwa kategorii: 1–100 znaków; `parent_id` wskazuje istniejącą kategorię
+  lub jest NULL; zakazane jest wskazanie siebie lub własnego potomka;
+- `slug` jest generowany z nazwy i unikalny, także przy powtórzonej nazwie
+  długości 100 znaków; sufiks mieści się w limicie 100 znaków;
+- `sort_order`: liczba całkowita 0–2147483647;
+- nazwa usługi: 1–150 znaków, istniejąca kategoria, niepusta jednostka
+  do 20 znaków, cena 0–99999999,99 z maksymalnie dwoma miejscami dziesiętnymi;
+- czas usługi: liczba całkowita 1–65535 minut, zgodnie z SMALLINT UNSIGNED;
+- dostępność: wyłącznie `0` lub `1`; brak niezaznaczonego checkboxa oznacza `0`;
+- opisy: maksymalnie 65535 bajtów UTF-8, zgodnie z kolumną TEXT.
+
+Sprawdzenie relacji i zapis/usunięcie są wykonywane w transakcji.
+Panel kategorii blokuje istniejące wiersze kategorii w kolejności ID,
+aby serializować zmiany hierarchii i generowanie slugów. To rozwiązanie
+przeznaczone dla małego katalogu restauracji; przy dużym katalogu należy
+ocenić czas oczekiwania na blokady. Zapis usługi utrzymuje blokadę współdzieloną
+kategorii, a edycja/usunięcie blokuje usługę. Błąd wycofuje transakcję.
+Dotyczy to operacji katalogu; nie zastępuje testów współbieżnych rezerwacji.
+Wszystkie zapytania trzech analizowanych paneli korzystają z prepare/execute.
+Pozostają wymagane rola admin i prawidłowy CSRF. Schemat SQL nie wymaga zmian.
+
+### Testy katalogu
+
+```text
+php tests/stage3_catalog.php /sciezka/do/test_credentials.php
+```
+
+Warunki uruchomienia są takie jak dla `stage2_auth.php`: osobna, pusta,
+lokalna baza `michelin_test_*`, konfiguracja poza projektem, PHP z PDO MySQL,
+mbstring i proc_open. Test sam importuje SQL i uruchamia kopię aplikacji
+w katalogu tymczasowym. Nie wskazuj bazy użytkowników. Testy usuwania dotyczą
+wyłącznie tej oddzielnej bazy. Kolejny przebieg wymaga nowej pustej bazy.
+
+Rzeczywiście wykonano na PHP 8.4.28 / MySQL 8.4.13:
+
+- **154/154 kontroli OK**: dodawanie i edycja kategorii, rodzice i cykle,
+  slug dla polskich nazw i kolizji przy 100 znakach, granice sort_order,
+  dodawanie i edycja usług, cena, czas, kategoria, dostępność, błędne wartości,
+  blokada usuwania powiązanych rekordów i usuwanie niepowiązanych,
+  odmowa dostępu klientowi/pracownikowi/anonimowemu, brak/błędny CSRF,
+  escapowanie XSS, nawigacja i brak błędów PHP/SQL w logu;
+- `php -l`: **24/24 pliki PHP bez błędów**.
+
+Nie wykonywano testów wyglądu w rzeczywistej przeglądarce, obciążeniowych
+ani równoległych żądań HTTP. Nie realizowano kolejnego etapu. Narzędzia i baza
+testowa są tymczasowe, poza projektem, i po pracy są usuwane.

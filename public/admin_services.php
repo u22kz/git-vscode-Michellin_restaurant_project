@@ -111,6 +111,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? $_POST['is_available']
                 : '0';
 
+            // Brak pola oznacza niezaznaczony checkbox, ale dowolny inny tekst
+            // nie może być po cichu zamieniany na wyłączenie usługi.
+            if (!in_array($availableRaw, ['0', '1'], true)) {
+                $errors[] = 'Dostępność usługi musi mieć wartość 0 lub 1.';
+            }
+            if (strlen($description) > 65535) {
+                $errors[] = 'Opis usługi jest zbyt długi (maksymalnie 65535 bajtów UTF-8).';
+            }
+
             $formData = [
                 'category_id' => $categoryRaw,
                 'name' => $name,
@@ -162,10 +171,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
 
+                $pdo->beginTransaction();
+
                 // Sprawdzenie istnienia kategorii.
                 if ($categoryId !== false && $categoryId > 0) {
                     $stmt = $pdo->prepare(
-                        'SELECT 1 FROM categories WHERE category_id = :id'
+                        'SELECT 1 FROM categories WHERE category_id = :id FOR SHARE'
                     );
                     $stmt->execute(['id' => $categoryId]);
 
@@ -177,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Sprawdzenie istnienia edytowanej usługi.
                 if ($serviceId !== null) {
                     $stmt = $pdo->prepare(
-                        'SELECT 1 FROM services WHERE service_id = :id'
+                        'SELECT 1 FROM services WHERE service_id = :id FOR UPDATE'
                     );
                     $stmt->execute(['id' => $serviceId]);
 
@@ -227,6 +238,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'is_available' => $formData['is_available']
                         ]);
 
+                        $pdo->commit();
                         header('Location: admin_services.php?status=created');
                         exit;
 
@@ -255,12 +267,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'id' => $serviceId
                         ]);
 
+                        $pdo->commit();
                         header('Location: admin_services.php?status=updated');
                         exit;
                     }
                 }
 
+                $pdo->rollBack();
             } catch (PDOException $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 error_log('Błąd zapisu usługi: ' . $e->getMessage());
                 $errors[] = 'Wystąpił błąd podczas zapisywania usługi.';
             }
@@ -279,8 +296,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 try {
 
+                    $pdo->beginTransaction();
+
                     $stmt = $pdo->prepare(
-                        'SELECT 1 FROM services WHERE service_id = :id'
+                        'SELECT 1 FROM services WHERE service_id = :id FOR UPDATE'
                     );
                     $stmt->execute(['id' => $deleteId]);
 
@@ -317,11 +336,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         );
                         $stmt->execute(['id' => $deleteId]);
 
+                        $pdo->commit();
                         header('Location: admin_services.php?status=deleted');
                         exit;
                     }
 
+                    $pdo->rollBack();
                 } catch (PDOException $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
                     error_log('Błąd usuwania usługi: ' . $e->getMessage());
                     $errors[] = 'Wystąpił błąd podczas usuwania usługi.';
                 }
@@ -416,12 +440,13 @@ $categories = [];
 
 try {
 
-    $stmt = $pdo->query(
+    $stmt = $pdo->prepare(
         'SELECT category_id, name
          FROM categories
          ORDER BY sort_order ASC, name ASC'
     );
 
+    $stmt->execute();
     $categories = $stmt->fetchAll();
 
 } catch (PDOException $e) {
@@ -437,7 +462,7 @@ $services = [];
 
 try {
 
-    $stmt = $pdo->query(
+    $stmt = $pdo->prepare(
         'SELECT
             s.service_id,
             s.category_id,
@@ -464,6 +489,7 @@ try {
          ORDER BY s.created_at DESC, s.service_id DESC'
     );
 
+    $stmt->execute();
     $services = $stmt->fetchAll();
 
 } catch (PDOException $e) {
