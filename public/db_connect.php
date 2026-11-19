@@ -1,36 +1,47 @@
 <?php
 /**
  * Polaczenie PDO z baza danych Michelin Restaurant.
- * Wymaga pliku private/db_credentials.php poza public_html.
+ * Wymaga pliku private/db_credentials.php poza katalogiem public.
  */
+
+$connectionFailure = static function (string $logMessage): void {
+    error_log($logMessage);
+    $message = 'Wystapil problem z polaczeniem z baza danych.';
+    if (PHP_SAPI === 'cli') {
+        fwrite(STDERR, $message . PHP_EOL);
+        exit(1);
+    }
+    http_response_code(503);
+    exit($message);
+};
 
 $configFile = dirname(__DIR__) . '/private/db_credentials.php';
 if (!is_file($configFile)) {
-    error_log('Brak prywatnego pliku konfiguracji bazy danych.');
-    http_response_code(503);
-    exit('Wystapil problem z polaczeniem z baza danych.');
+    $connectionFailure('Brak prywatnego pliku konfiguracji bazy danych.');
 }
 
 $config = require $configFile;
 if (!is_array($config)) {
-    error_log('Niepoprawny format konfiguracji bazy.');
-    http_response_code(503);
-    exit('Wystapil problem z polaczeniem z baza danych.');
+    $connectionFailure('Niepoprawny format konfiguracji bazy.');
 }
 
 $db_host = $config['host'] ?? '';
 $db_name = $config['dbname'] ?? '';
 $db_user = $config['username'] ?? '';
-$db_pass = $config['password'] ?? '';
+$db_pass = $config['password'] ?? null;
+$db_port = filter_var($config['port'] ?? 3306, FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1, 'max_range' => 65535],
+]);
 $db_charset = 'utf8mb4';
 
-if ($db_host === '' || $db_name === '' || $db_user === '') {
-    error_log('Niekompletna konfiguracja bazy danych.');
-    http_response_code(503);
-    exit('Wystapil problem z polaczeniem z baza danych.');
+if (!is_string($db_host) || !is_string($db_name) || !is_string($db_user)
+    || !is_string($db_pass) || $db_port === false
+    || trim($db_host) === '' || trim($db_name) === '' || trim($db_user) === ''
+    || preg_match('/[;\x00-\x1F]/', $db_host . $db_name)) {
+    $connectionFailure('Niekompletna lub niepoprawna konfiguracja bazy danych.');
 }
 
-$dsn = "mysql:host={$db_host};dbname={$db_name};charset={$db_charset}";
+$dsn = "mysql:host={$db_host};port={$db_port};dbname={$db_name};charset={$db_charset}";
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -40,7 +51,5 @@ $options = [
 try {
     $pdo = new PDO($dsn, $db_user, $db_pass, $options);
 } catch (PDOException $e) {
-    error_log('Blad polaczenia PDO: ' . $e->getMessage());
-    http_response_code(503);
-    exit('Wystapil problem z polaczeniem z baza danych.');
+    $connectionFailure('Blad polaczenia PDO: ' . $e->getMessage());
 }

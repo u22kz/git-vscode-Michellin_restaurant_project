@@ -1,3 +1,5 @@
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 -- =====================================================
 
 -- BAZA DANYCH - MICHELIN RESTAURANT
@@ -40,7 +42,7 @@ is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 
@@ -70,7 +72,7 @@ ON UPDATE CASCADE
 
 ON DELETE RESTRICT
 
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 
@@ -110,7 +112,7 @@ ON UPDATE CASCADE
 
 ON DELETE SET NULL
 
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 
@@ -166,7 +168,7 @@ INDEX idx_services_category (category_id),
 
 INDEX idx_services_available (is_available)
 
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 
@@ -206,7 +208,7 @@ ON DELETE CASCADE,
 
 INDEX idx_employee_services_service (service_id)
 
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 
@@ -248,7 +250,7 @@ INDEX idx_availability_employee_day
 
 (employee_id, day_of_week)
 
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 
@@ -356,7 +358,7 @@ INDEX idx_reservations_date
 
 (reservation_date)
 
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
 
@@ -714,14 +716,13 @@ VALUES
 
 'Prośba o dobór win do menu.'),
 
-(3, 3, 5, 6,
+(3, 1, 5, 6,
 
 '2026-10-15', '18:00:00', '21:00:00',
 
 8, 'confirmed',
 
 'Spotkanie biznesowe, prośba o dyskrecję i szybką obsługę.');
-\n
 -- =====================================================
 -- ROZSZERZENIA NA OCENĘ 6
 -- URLOPY, DNI WOLNE I DZIENNIK ADMINISTRATORA

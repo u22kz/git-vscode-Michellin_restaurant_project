@@ -1,4 +1,3 @@
-
 <?php
 require_once 'auth_check.php';
 require_once 'db_connect.php';
@@ -35,7 +34,10 @@ $messageType = 'info';
 
 // Obsługa formularzy
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_verify();
+    if (!csrf_verify()) {
+        http_response_code(403);
+        exit('Nieprawidłowy token formularza. Odśwież stronę i spróbuj ponownie.');
+    }
 
     $action = $_POST['action'] ?? '';
 
