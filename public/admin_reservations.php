@@ -21,7 +21,7 @@ $allowedStatuses = array_keys($statusLabels);
 
 // Zmiana statusu rezerwacji
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_verify();
+    csrf_require_valid();
 
     $action = $_POST['action'] ?? '';
 

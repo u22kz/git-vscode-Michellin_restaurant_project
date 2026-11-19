@@ -6,6 +6,7 @@
  */
 require_once 'auth_check.php';
 require_once 'db_connect.php';
+require_once 'form_validation.php';
 
 // Zalogowany użytkownik nie potrzebuje strony rejestracji
 if (is_logged_in()) {
@@ -32,12 +33,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // --- Pobranie i wstępne oczyszczenie danych wejściowych ---
-    $name             = trim($_POST['name'] ?? '');
-    $surname          = trim($_POST['surname'] ?? '');
-    $phone            = trim($_POST['phone'] ?? '');
-    $email            = trim($_POST['email'] ?? '');
-    $password         = $_POST['password'] ?? '';
-    $password_confirm = $_POST['password_confirm'] ?? '';
+    $name             = trim(post_string('name'));
+    $surname          = trim(post_string('surname'));
+    $phone            = trim(post_string('phone'));
+    $email            = trim(post_string('email'));
+    $password         = post_string('password');
+    $password_confirm = post_string('password_confirm');
 
     $old = compact('name', 'surname', 'phone', 'email');
 
@@ -46,21 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Wszystkie pola są wymagane.';
     }
 
-    // --- Walidacja długości (zgodnie z limitami kolumn w bazie) ---
-    if (mb_strlen($name) > 50) {
-        $errors[] = 'Imię może mieć maksymalnie 50 znaków.';
-    }
-    if (mb_strlen($surname) > 80) {
-        $errors[] = 'Nazwisko może mieć maksymalnie 80 znaków.';
-    }
-    if (mb_strlen($phone) > 20) {
-        $errors[] = 'Numer telefonu może mieć maksymalnie 20 znaków.';
-    }
-
-    // --- Walidacja formatu telefonu (tylko cyfry, spacje, +, -, min. 9 cyfr) ---
-    if ($phone !== '' && !preg_match('/^[0-9+\-\s]{9,20}$/', $phone)) {
-        $errors[] = 'Numer telefonu ma nieprawidłowy format.';
-    }
+    $errors = array_merge($errors, personal_details_errors($name, $surname, $phone));
 
     // --- Walidacja adresu e-mail ---
     if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -71,8 +58,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // --- Walidacja hasła ---
-    if (strlen($password) < 8) {
-        $errors[] = 'Hasło musi mieć co najmniej 8 znaków.';
+    if (($passwordError = password_validation_error($password)) !== null) {
+        $errors[] = $passwordError;
     }
     if ($password !== $password_confirm) {
         $errors[] = 'Podane hasła nie są identyczne.';
@@ -118,7 +105,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $old = ['name' => '', 'surname' => '', 'phone' => '', 'email' => '']; // czyścimy formularz
         } catch (PDOException $e) {
             error_log('Błąd zapisu nowego użytkownika: ' . $e->getMessage());
-            $errors[] = 'Wystąpił błąd podczas zapisu konta. Spróbuj ponownie później.';
+            // UNIQUE chroni też przed dwoma równoczesnymi rejestracjami.
+            $errors[] = (int)($e->errorInfo[1] ?? 0) === 1062
+                ? 'Ten adres e-mail jest już zarejestrowany.'
+                : 'Wystąpił błąd podczas zapisu konta. Spróbuj ponownie później.';
         }
     }
 }

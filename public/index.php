@@ -29,7 +29,7 @@ $access_denied = isset($_GET['error']) && $_GET['error'] === 'access_denied';
             <?php if ($logged_in): ?>
                 <a class="btn btn-outline-light btn-sm me-2" href="<?= htmlspecialchars(dashboard_url_for_role($role), ENT_QUOTES, 'UTF-8') ?>">Mój panel</a>
                 <a class="btn btn-outline-light btn-sm me-2" href="profile.php">Profil</a>
-                <a class="btn btn-danger btn-sm" href="logout.php">Wyloguj</a>
+                <?= logout_button('btn btn-danger btn-sm') ?>
             <?php else: ?>
                 <a class="btn btn-outline-light btn-sm me-2" href="login.php">Zaloguj się</a>
                 <a class="btn btn-light btn-sm" href="register.php">Zarejestruj się</a>

@@ -122,7 +122,7 @@ if ($employee_id !== null) {
         <div>
             <span class="text-light me-3">Witaj, <?= htmlspecialchars(current_user_name(), ENT_QUOTES, 'UTF-8') ?></span>
             <a class="btn btn-outline-light btn-sm me-2" href="profile.php">Profil</a>
-            <a class="btn btn-danger btn-sm" href="logout.php">Wyloguj</a>
+            <?= logout_button('btn btn-danger btn-sm') ?>
         </div>
     </div>
 </nav>

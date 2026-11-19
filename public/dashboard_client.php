@@ -416,12 +416,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Location: dashboard_client.php?created=1');
                     exit;
 
-                } catch (RuntimeException $e) {
-                    if ($pdo->inTransaction()) {
-                        $pdo->rollBack();
-                    }
-                    $errors[] = $e->getMessage();
-
                 } catch (PDOException $e) {
                     if ($pdo->inTransaction()) {
                         $pdo->rollBack();
@@ -429,6 +423,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     error_log('Błąd tworzenia rezerwacji: ' . $e->getMessage());
                     $errors[] = 'Wystąpił błąd bazy danych podczas rezerwacji. Spróbuj ponownie.';
+                } catch (RuntimeException $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    $errors[] = $e->getMessage();
                 }
             }
         } else {
@@ -503,7 +502,7 @@ try {
                 Witaj, <?= $escape(current_user_name()) ?>
             </span>
             <a class="btn btn-outline-light btn-sm me-2" href="profile.php">Profil</a>
-            <a class="btn btn-danger btn-sm" href="logout.php">Wyloguj</a>
+            <?= logout_button('btn btn-danger btn-sm') ?>
         </div>
     </div>
 </nav>

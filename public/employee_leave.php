@@ -34,10 +34,7 @@ $messageType = 'info';
 
 // Obsługa formularzy
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!csrf_verify()) {
-        http_response_code(403);
-        exit('Nieprawidłowy token formularza. Odśwież stronę i spróbuj ponownie.');
-    }
+    csrf_require_valid();
 
     $action = $_POST['action'] ?? '';
 
@@ -194,9 +191,7 @@ $statusColors = [
             <a href="dashboard_employee.php" class="btn btn-outline-light btn-sm">
                 Panel pracownika
             </a>
-            <a href="logout.php" class="btn btn-outline-danger btn-sm">
-                Wyloguj
-            </a>
+            <?= logout_button('btn btn-outline-danger btn-sm') ?>
         </div>
     </div>
 </nav>

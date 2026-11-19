@@ -509,9 +509,7 @@ try {
                 Profil
             </a>
 
-            <a href="logout.php" class="btn btn-danger btn-sm">
-                Wyloguj
-            </a>
+            <?= logout_button('btn btn-danger btn-sm') ?>
         </div>
 
     </div>

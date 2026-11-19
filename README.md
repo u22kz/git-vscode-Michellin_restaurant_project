@@ -1,4 +1,4 @@
-# Michelin Restaurant — etap 1
+# Michelin Restaurant — etapy 1 i 2
 
 Samodzielna aplikacja PHP/MySQL. Wszystkie polecenia poniżej wykonuj z katalogu
 projektu, zawierającego `public`, `private` i `database`.
@@ -163,7 +163,7 @@ Aktywny formularz jest dostępny pod `dashboard_client.php`.
 
 Dokumentacja silnika: [ograniczenia CHECK](https://dev.mysql.com/doc/refman/8.4/en/create-table-check-constraints.html).
 
-## Wyniki weryfikacji — 18.11.2026
+## Wyniki weryfikacji etapu 1 — 18.11.2026
 
 - Import całego `database.sql` przez PDO do nowej, izolowanej bazy MySQL 8.4.13:
   poprawny, bez wyłączania FK i bez zmian w istniejących bazach.
@@ -190,3 +190,115 @@ Tymczasowe połączenie testowe nie jest konfiguracją docelowej aplikacji.
 
 Nie dostarczono `WYMAGANIA_MICHELIN.md` ani `AUDYT_STARTOWY.md`; zakres napraw
 oparto na wymaganiach etapu 1 przekazanych w zadaniu i analizie aktualnego kodu.
+
+## Konta, sesje i uprawnienia — etap 2
+
+Rejestracja publiczna tworzy wyłącznie klienta. Pola `role`, `user_id` i
+`is_active` przesłane przez użytkownika nie wpływają na tworzone konto.
+Imię i nazwisko wymagają liter (również polskich), z dopuszczalnymi spacjami,
+apostrofami i łącznikami, przy limitach 50/80 znaków. Telefon musi zawierać
+9–15 cyfr, maksymalnie 20 znaków ze spacjami, łącznikami i opcjonalnym `+`
+na początku. E-mail jest walidowany i chroniony indeksem UNIQUE, także przy
+równoczesnej rejestracji. Pola tekstowe przesłane jako tablice są odrzucane.
+
+Nowe hasło wymaga co najmniej 8 znaków i najwyżej 72 bajtów UTF-8; znak NUL
+jest zabroniony. Limit bajtów zapobiega obcinaniu hasła przez bcrypt używany
+w obecnym `PASSWORD_DEFAULT`. Zmiana hasła wymaga dotychczasowego hasła
+i zgodnego potwierdzenia. Hasła przechowujemy wyłącznie jako hashe,
+weryfikowane przez `password_verify`. Przy logowaniu przestarzały hash
+jest aktualizowany przez `password_needs_rehash`/`password_hash`.
+
+Po 5 błędnych logowaniach konto jest blokowane na 15 minut, również dla
+poprawnego hasła. Licznik działa między różnymi sesjami przeglądarki.
+Transakcja z `SELECT ... FOR UPDATE` chroni jego aktualizację przed
+nadpisywaniem równoczesnych prób. Czas blokady pochodzi z MySQL.
+Jest to ograniczenie prób na konto; nie zastępuje ograniczania ruchu
+na poziomie serwera dla ataków rozproszonych.
+
+Sesje korzystają wyłącznie z ciasteczek, trybu ścisłego, `HttpOnly` i
+`SameSite=Lax`; przy HTTPS otrzymują również `Secure`. Serwer produkcyjny
+powinien obsługiwać HTTPS i przekazywać PHP poprawną wartość `HTTPS`.
+Nie ufamy nagłówkom `X-Forwarded-*` nadsyłanym bezpośrednio przez klienta.
+ID sesji zmienia się po logowaniu, zmianie hasła i zmianie roli. Odpowiedzi
+korzystające z sesji mają `Cache-Control: no-store`.
+
+Przy każdym żądaniu zalogowanego użytkownika sprawdzamy w bazie jego rolę,
+aktywność oraz zgodność hasła z sesją. Dezaktywowane konto traci dostęp
+przy następnym żądaniu, a zmiana hasła unieważnia inne sesje. W sesji jest
+odcisk hasha hasła, nie hasło jawne. Błąd odczytu uprawnień blokuje dostęp
+(HTTP 503). Sesje sprzed tej aktualizacji wymagają ponownego logowania.
+
+Wspólna kontrola w `auth_check.php` odrzuca każdy POST z brakującym,
+niepoprawnym lub nietekstowym tokenem CSRF (HTTP 403), przed obsługą
+formularza. Dotyczy też logowania, rejestracji i wylogowania. Przyciski
+wylogowania zachowują klasy Bootstrap, ale wysyłają POST z tokenem.
+Bezpośredni GET do `logout.php` zwraca 405 i nie niszczy sesji.
+
+Profil zawsze używa ID zalogowanej osoby; formularz nie może zmienić
+e-maila, roli ani danych innego konta. Zapytania z danymi wejściowymi
+używają parametrów PDO; dane użytkowników wyświetlane w HTML są escapowane.
+Nie było potrzeby zmieniania schematu SQL ani danych istniejących użytkowników.
+
+## Uruchomienie testów etapu 2
+
+Utwórz osobną, **pustą** lokalną bazę o unikalnej nazwie `michelin_test_*`
+i plik konfiguracji poza projektem, np. w katalogu tymczasowym. Format tablicy
+jest taki jak w `private/db_credentials.example.php`. Konto testowe potrzebuje
+uprawnień SELECT, INSERT, UPDATE, DELETE, CREATE i REFERENCES tylko do tej bazy.
+Nie importuj SQL ręcznie — zrobi to test. Nie wskazuj istniejącej bazy aplikacji.
+
+```text
+php tests/stage2_auth.php /sciezka/do/test_credentials.php
+```
+
+W PowerShell podaj ścieżkę Windows w cudzysłowie. Wymagane są `pdo_mysql`,
+`mbstring`, `allow_url_fopen=On`, dostępne `proc_open` i wolny lokalny port.
+Test odmawia pracy na niepustej bazie oraz na nazwie bez prefiksu
+`michelin_test_`. Kopiuje pliki PHP do losowego katalogu tymczasowego,
+uruchamia własny serwer HTTP tylko na `127.0.0.1` i sprawdza jego tożsamość.
+Nie zmienia konfiguracji ani plików aplikacji w projekcie.
+
+Po zakończeniu test zatrzymuje swój serwer i usuwa kopię aplikacji, sesje
+i konfigurację tymczasową. Dane testowe pozostają w wskazanej osobnej bazie
+do ewentualnej inspekcji; kolejny przebieg wymaga nowej pustej bazy.
+Pobrane zewnętrznie narzędzia PHP/MySQL przechowuj poza projektem i usuń po pracy.
+
+Dokumentacja PHP: [ustawienia bezpieczeństwa sesji](https://www.php.net/manual/en/session.security.ini.php),
+[hashowanie i limit bcrypt](https://www.php.net/manual/en/function.password-hash.php).
+
+## Weryfikacja etapu 2 — 19.11.2026
+
+Ponownie sprawdzono aktualne pliki względem WYMAGANIA_MICHELIN.md.
+Wcześniejsze poprawki logowania, sesji, ról, profilu i CSRF były już obecne.
+W tym przebiegu uzupełniono wspólną walidację kształtu danych GET/POST:
+tablice w polach tekstowych/ID, NUL i niepoprawny UTF-8 zwracają HTTP 400
+przed wykonaniem operacji. Wyjątkiem jest prawidłowa płaska lista `service_ids`
+w formularzu pracowników. Błędny token CSRF nadal ma pierwszeństwo i daje 403.
+Walidacja biznesowa poprawnie zbudowanych formularzy pozostaje bez zmian.
+
+Poprawiono kolejność obsługi wyjątków w panelu klienta: PDOException jest
+obsługiwany przed RuntimeException. Szczegóły błędu bazy są zapisywane w logu,
+a użytkownik widzi ogólny komunikat. Test wymusił błąd SQL i potwierdził rollback.
+
+Rzeczywiście wykonane sprawdzenia:
+
+- PHP 8.4.28: `php -l` dla wszystkich 23 plików PHP — bez błędów.
+- MySQL 8.4.13: import aktualnego SQL do pustej osobnej bazy testowej.
+- `tests/stage2_auth.php`: **169/169 kontroli OK**. Rejestracja poprawna,
+  niepoprawny/duplikowany email, niepoprawne hasła i potwierdzenia, wymuszenie
+  roli admin przez POST, logowanie trzech ról, regeneracja i niszczenie sesji,
+  profil i zmiana hasła, blokada po 5 próbach, odmowa dostępu klientowi do
+  paneli, brak/błędny/tablicowy/obcy CSRF, deaktywacja w trakcie sesji,
+  zmiana roli w trakcie sesji, SQL Injection, XSS, podmiana ID, walidacja
+  kształtu danych oraz ukrywanie błędu PDO.
+- Poprawne operacje administratora/pracownika nadal działają z prawidłowym
+  CSRF, w tym zapis listy przypisanych usług.
+
+Nie zmieniano schematu SQL, prawdziwych danych ani wyglądu formularzy.
+Testy korzystały z kopii aplikacji i narzędzi poza projektem, w katalogu
+tymczasowym; po pracy środowisko jest usuwane. W folderze projektu nie ma `.git`.
+Nie wykonano commit/push.
+
+Ograniczenia: bez testów wdrożenia Apache/Nginx/HTTPS i wyglądu w przeglądarce,
+bez pełnej macierzy etapu 4 i równoległych żądań rezerwacji. Pozostałe problemy
+biznesowe etapów 3–4 opisane w audycie wymagają osobnego zadania.

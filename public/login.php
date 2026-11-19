@@ -7,6 +7,7 @@
  */
 require_once 'auth_check.php';
 require_once 'db_connect.php';
+require_once 'form_validation.php';
 
 // Zalogowany użytkownik nie potrzebuje strony logowania
 if (is_logged_in()) {
@@ -28,21 +29,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
     }
 
-    $email    = trim($_POST['email'] ?? '');
-    $password = $_POST['password'] ?? '';
+    $email    = trim(post_string('email'));
+    $password = post_string('password');
     $old_email = $email;
 
     if (empty($errors) && ($email === '' || $password === '')) {
         $errors[] = 'Podaj adres e-mail i hasło.';
     }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 100
+        || strlen($password) > 72 || str_contains($password, "\0")) {
+        $errors[] = 'Nieprawidłowy adres e-mail lub hasło.';
+    }
 
     if (empty($errors)) {
         try {
+            // Blokada wiersza zapobiega gubieniu prób przy równoczesnych logowaniach.
+            $pdo->beginTransaction();
             $stmt = $pdo->prepare(
                 'SELECT user_id, name, surname, password, role, is_active,
-                        failed_login_attempts, locked_until
+                        failed_login_attempts, locked_until,
+                        (locked_until > CURRENT_TIMESTAMP) AS is_locked
                  FROM users
-                 WHERE customer_email = :email'
+                 WHERE customer_email = :email FOR UPDATE'
             );
             $stmt->execute(['email' => $email]);
             $user = $stmt->fetch();
@@ -55,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // --- Sprawdzenie, czy konto jest tymczasowo zablokowane po zbyt wielu próbach ---
             $is_locked = $user !== false
                 && $user['locked_until'] !== null
-                && strtotime($user['locked_until']) > time();
+                && (bool)$user['is_locked'];
 
             if ($is_locked) {
                 // Konta zablokowanego NIE odblokowujemy nawet poprawnym hasłem -
@@ -66,44 +74,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Nieudana próba logowania - jeśli konto istnieje, zwiększamy licznik
                 // i ewentualnie zakładamy blokadę czasową.
                 if ($user !== false) {
-                    $attempts = (int) $user['failed_login_attempts'] + 1;
+                    $attempts = ($user['locked_until'] !== null ? 0 : (int)$user['failed_login_attempts']) + 1;
 
                     if ($attempts >= MAX_LOGIN_ATTEMPTS) {
-                        $locked_until = date('Y-m-d H:i:s', time() + LOCKOUT_MINUTES * 60);
                         $stmt = $pdo->prepare(
-                            'UPDATE users SET failed_login_attempts = 0, locked_until = :locked_until
+                            'UPDATE users SET failed_login_attempts = :attempts,
+                             locked_until = TIMESTAMPADD(MINUTE, :minutes, CURRENT_TIMESTAMP)
                              WHERE user_id = :id'
                         );
-                        $stmt->execute(['locked_until' => $locked_until, 'id' => $user['user_id']]);
+                        $stmt->execute(['attempts' => $attempts, 'minutes' => LOCKOUT_MINUTES, 'id' => $user['user_id']]);
                     } else {
                         $stmt = $pdo->prepare(
-                            'UPDATE users SET failed_login_attempts = :attempts WHERE user_id = :id'
+                            'UPDATE users SET failed_login_attempts = :attempts, locked_until = NULL WHERE user_id = :id'
                         );
                         $stmt->execute(['attempts' => $attempts, 'id' => $user['user_id']]);
                     }
                 }
 
                 $errors[] = $generic_error;
-            } elseif ((int) $user['is_active'] !== 1) {
-                $errors[] = 'To konto zostało dezaktywowane. Skontaktuj się z administratorem.';
+            } elseif ((int) $user['is_active'] !== 1
+                || !in_array($user['role'], ['client', 'employee', 'admin'], true)) {
+                $errors[] = $generic_error;
             } else {
                 // Dane logowania poprawne - zerujemy licznik nieudanych prób
                 // i tworzymy sesję. regenerate_id chroni przed atakiem session fixation.
-                $stmt = $pdo->prepare(
-                    'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE user_id = :id'
-                );
-                $stmt->execute(['id' => $user['user_id']]);
+                if (password_needs_rehash($user['password'], PASSWORD_DEFAULT)) {
+                    $user['password'] = password_hash($password, PASSWORD_DEFAULT);
+                }
+                $stmt = $pdo->prepare('UPDATE users SET failed_login_attempts = 0,
+                    locked_until = NULL, password = :password WHERE user_id = :id');
+                $stmt->execute(['password' => $user['password'], 'id' => $user['user_id']]);
+                $pdo->commit();
 
                 session_regenerate_id(true);
-
+                $_SESSION = [];
                 $_SESSION['user_id'] = (int) $user['user_id'];
                 $_SESSION['name']    = $user['name'] . ' ' . $user['surname'];
                 $_SESSION['role']    = $user['role'];
+                $_SESSION['password_stamp'] = hash('sha256', $user['password']);
 
                 header('Location: ' . dashboard_url_for_role($user['role']));
                 exit;
             }
+            $pdo->commit();
         } catch (PDOException $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error_log('Błąd logowania: ' . $e->getMessage());
             $errors[] = 'Wystąpił błąd podczas logowania. Spróbuj ponownie później.';
         }
