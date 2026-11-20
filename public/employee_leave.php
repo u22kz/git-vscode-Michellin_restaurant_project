@@ -37,92 +37,113 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_require_valid();
 
     $action = $_POST['action'] ?? '';
+    try {
 
-    // Złożenie nowego wniosku
-    if ($action === 'create') {
-        $startDate = $_POST['start_date'] ?? '';
-        $endDate = $_POST['end_date'] ?? '';
-        $reason = trim($_POST['reason'] ?? '');
+        // Złożenie nowego wniosku
+        if ($action === 'create') {
+            $startDate = $_POST['start_date'] ?? '';
+            $endDate = $_POST['end_date'] ?? '';
+            $reason = trim($_POST['reason'] ?? '');
 
-        $validStart = preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate)
-            && checkdate(
-                (int)substr($startDate, 5, 2),
-                (int)substr($startDate, 8, 2),
-                (int)substr($startDate, 0, 4)
-            );
+            $validStart = preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate)
+                && checkdate(
+                    (int)substr($startDate, 5, 2),
+                    (int)substr($startDate, 8, 2),
+                    (int)substr($startDate, 0, 4)
+                );
 
-        $validEnd = preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)
-            && checkdate(
-                (int)substr($endDate, 5, 2),
-                (int)substr($endDate, 8, 2),
-                (int)substr($endDate, 0, 4)
-            );
+            $validEnd = preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)
+                && checkdate(
+                    (int)substr($endDate, 5, 2),
+                    (int)substr($endDate, 8, 2),
+                    (int)substr($endDate, 0, 4)
+                );
 
-        if (!$validStart || !$validEnd) {
-            $message = 'Wprowadź prawidłowe daty.';
-            $messageType = 'danger';
-        } elseif ($startDate < date('Y-m-d')) {
-            $message = 'Nie można składać wniosku z datą rozpoczęcia w przeszłości.';
-            $messageType = 'danger';
-        } elseif ($endDate < $startDate) {
-            $message = 'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.';
-            $messageType = 'danger';
-        } else {
-            // Sprawdzenie, czy nie istnieje inny aktywny wniosek
-            $check = $pdo->prepare("
-                SELECT COUNT(*)
-                FROM employee_leave_requests
-                WHERE employee_id = ?
-                  AND status IN ('pending', 'approved')
-                  AND start_date <= ?
-                  AND end_date >= ?
-            ");
-            $check->execute([$employeeId, $endDate, $startDate]);
-
-            if ((int)$check->fetchColumn() > 0) {
-                $message = 'Masz już wniosek oczekujący lub zatwierdzony w tym terminie.';
-                $messageType = 'warning';
+            if (strlen($reason) > 65535) {
+                $message = 'Powód jest zbyt długi.';
+                $messageType = 'danger';
+            } elseif (!$validStart || !$validEnd) {
+                $message = 'Wprowadź prawidłowe daty.';
+                $messageType = 'danger';
+            } elseif ($startDate < date('Y-m-d')) {
+                $message = 'Nie można składać wniosku z datą rozpoczęcia w przeszłości.';
+                $messageType = 'danger';
+            } elseif ($endDate < $startDate) {
+                $message = 'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.';
+                $messageType = 'danger';
             } else {
-                $insert = $pdo->prepare("
-                    INSERT INTO employee_leave_requests
-                    (employee_id, start_date, end_date, reason)
-                    VALUES (?, ?, ?, ?)
+                $pdo->beginTransaction();
+                $lock = $pdo->prepare('SELECT employee_id FROM employees WHERE employee_id = ? AND is_active = 1 FOR UPDATE');
+                $lock->execute([$employeeId]);
+                if (!$lock->fetch()) throw new RuntimeException('Profil pracownika jest nieaktywny.');
+                // Sprawdzenie, czy nie istnieje inny aktywny wniosek
+                $check = $pdo->prepare("
+                    SELECT COUNT(*)
+                    FROM employee_leave_requests
+                    WHERE employee_id = ?
+                      AND status IN ('pending', 'approved')
+                      AND start_date <= ?
+                      AND end_date >= ?
                 ");
+                $check->execute([$employeeId, $endDate, $startDate]);
 
-                $insert->execute([
-                    $employeeId,
-                    $startDate,
-                    $endDate,
-                    $reason !== '' ? $reason : null
-                ]);
+                if ((int)$check->fetchColumn() > 0) {
+                    $message = 'Masz już wniosek oczekujący lub zatwierdzony w tym terminie.';
+                    $messageType = 'warning';
+                    $pdo->rollBack();
+                } else {
+                    $insert = $pdo->prepare("
+                        INSERT INTO employee_leave_requests
+                        (employee_id, start_date, end_date, reason)
+                        VALUES (?, ?, ?, ?)
+                    ");
 
-                header('Location: employee_leave.php?msg=created');
-                exit;
+                    $insert->execute([
+                        $employeeId,
+                        $startDate,
+                        $endDate,
+                        $reason !== '' ? $reason : null
+                    ]);
+
+                    $pdo->commit();
+                    header('Location: employee_leave.php?msg=created');
+                    exit;
+                }
             }
         }
-    }
 
-    // Anulowanie własnego oczekującego wniosku
-    elseif ($action === 'cancel') {
-        $requestId = (int)($_POST['request_id'] ?? 0);
+        // Anulowanie własnego oczekującego wniosku
+        elseif ($action === 'cancel') {
+            $requestId = filter_var($_POST['request_id'] ?? '', FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 1, 'max_range' => 4294967295]]);
+            if ($requestId === false) throw new RuntimeException('Nieprawidłowy identyfikator wniosku.');
 
-        $cancel = $pdo->prepare("
-            UPDATE employee_leave_requests
-            SET status = 'cancelled'
-            WHERE leave_request_id = ?
-              AND employee_id = ?
-              AND status = 'pending'
-        ");
+            $cancel = $pdo->prepare("
+                UPDATE employee_leave_requests
+                SET status = 'cancelled'
+                WHERE leave_request_id = ?
+                  AND employee_id = ?
+                  AND status = 'pending'
+            ");
 
-        $cancel->execute([$requestId, $employeeId]);
+            $cancel->execute([$requestId, $employeeId]);
 
-        if ($cancel->rowCount() > 0) {
-            header('Location: employee_leave.php?msg=cancelled');
-            exit;
-        } else {
-            $message = 'Nie udało się anulować wniosku.';
-            $messageType = 'danger';
+            if ($cancel->rowCount() > 0) {
+                header('Location: employee_leave.php?msg=cancelled');
+                exit;
+            } else {
+                $message = 'Nie udało się anulować wniosku.';
+                $messageType = 'danger';
+            }
         }
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        $message = 'Nie udało się zapisać wniosku. Spróbuj ponownie.';
+        $messageType = 'danger';
+    } catch (RuntimeException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        $message = $e->getMessage();
+        $messageType = 'danger';
     }
 }
 

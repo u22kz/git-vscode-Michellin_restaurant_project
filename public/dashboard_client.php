@@ -7,7 +7,10 @@ require_role(['client']);
 $user_id = (int) current_user_id();
 
 $errors = [];
-$success = '';
+$isPageView = $_SERVER['REQUEST_METHOD'] === 'GET' && !isset($_GET['ajax']);
+$success = $isPageView ? ($_SESSION['reservation_client_success'] ?? '') : '';
+$createdId = $isPageView ? (int)($_SESSION['reservation_created_id'] ?? 0) : 0;
+if (!isset($_GET['ajax'])) unset($_SESSION['reservation_client_success'], $_SESSION['reservation_created_id']);
 $escape = static fn($value) => htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 
 $status_labels = [
@@ -19,6 +22,7 @@ $status_labels = [
 ];
 
 $is_valid_date = static function ($date) {
+    if (!preg_match('/\A[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}\z/', $date)) return false;
     $parsed = DateTime::createFromFormat('!Y-m-d', $date);
     return $parsed && $parsed->format('Y-m-d') === $date;
 };
@@ -27,13 +31,13 @@ $is_valid_date = static function ($date) {
  * AJAX: pobieranie pracowników obsługujących usługę
  * w wybranym dniu, z uwzględnieniem ich dostępności i dni wolnych.
  */
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['ajax'] ?? '') === 'employees') {
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && in_array($_GET['ajax'] ?? '', ['employees', 'slots'], true)) {
     header('Content-Type: application/json; charset=utf-8');
 
     $service_id = filter_input(INPUT_GET, 'service_id', FILTER_VALIDATE_INT);
     $date = trim($_GET['date'] ?? '');
 
-    if (!$service_id || !$is_valid_date($date) || $date < date('Y-m-d')) {
+    if (!$service_id || $service_id < 1 || !$is_valid_date($date) || $date < date('Y-m-d')) {
         echo json_encode([]);
         exit;
     }
@@ -49,15 +53,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['ajax'] ?? '') === 'employees
             FROM employees e
             JOIN users u ON u.user_id = e.user_id
             JOIN employee_services es ON es.employee_id = e.employee_id
+            JOIN services s ON s.service_id = es.service_id
             WHERE es.service_id = :service_id
+              AND s.is_available = 1 AND s.duration_minutes > 0
               AND e.is_active = 1
               AND u.is_active = 1
+              AND u.role = 'employee'
 
               AND EXISTS (
                   SELECT 1
                   FROM employee_availability ea
                   WHERE ea.employee_id = e.employee_id
                     AND ea.day_of_week = :weekday
+                    AND TIME_TO_SEC(ea.end_time) - GREATEST(TIME_TO_SEC(ea.start_time), :earliest)
+                        >= s.duration_minutes * 60
               )
 
               AND NOT EXISTS (
@@ -87,16 +96,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['ajax'] ?? '') === 'employees
         $stmt->execute([
             'service_id' => $service_id,
             'weekday' => $weekday,
+            'earliest' => $date === date('Y-m-d') ? ((int)date('H') * 3600 + (int)date('i') * 60 + (int)date('s') + 1) : 0,
             'day_off_date' => $date,
             'leave_date' => $date,
             'restaurant_date' => $date,
         ]);
 
-        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (($_GET['ajax'] ?? '') === 'slots') {
+            $employeeId = filter_input(INPUT_GET, 'employee_id', FILTER_VALIDATE_INT);
+            if (!$employeeId || !in_array($employeeId, array_map('intval', array_column($employees, 'employee_id')), true)) {
+                echo json_encode([]); exit;
+            }
+            $stmt = $pdo->prepare('SELECT duration_minutes FROM services WHERE service_id = ? AND is_available = 1');
+            $stmt->execute([$service_id]);
+            $duration = (int)$stmt->fetchColumn();
+            if ($duration <= 0) { echo json_encode([]); exit; }
+            $stmt = $pdo->prepare('SELECT start_time, end_time FROM employee_availability WHERE employee_id = ? AND day_of_week = ? ORDER BY start_time');
+            $stmt->execute([$employeeId, $weekday]);
+            $windows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt = $pdo->prepare("SELECT start_time, end_time FROM reservations WHERE employee_id = ? AND reservation_date = ? AND status IN ('pending','confirmed')");
+            $stmt->execute([$employeeId, $date]);
+            $busy = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $slots = [];
+            $now = new DateTimeImmutable();
+            foreach ($windows as $window) {
+                $minute = (int)substr($window['start_time'],0,2)*60+(int)substr($window['start_time'],3,2);
+                if (substr($window['start_time'],6,2) !== '00') ++$minute;
+                for ($minute=(int)(ceil($minute/15)*15); $minute<1440; $minute+=15) {
+                    $time = sprintf('%02d:%02d', intdiv($minute,60), $minute%60);
+                    $start = new DateTimeImmutable($date.' '.$time);
+                    $end = $start->modify('+'.$duration.' minutes');
+                    if ($start->format('H:i') !== $time || $start <= $now || $end->format('Y-m-d') !== $date
+                        || $start->format('P') !== $end->format('P') || $end->format('H:i:s') > $window['end_time']) continue;
+                    foreach ($busy as $reservation) {
+                        if ($reservation['start_time'] < $end->format('H:i:s') && $reservation['end_time'] > $start->format('H:i:s')) continue 2;
+                    }
+                    $slots[$time] = $time;
+                }
+            }
+            sort($slots);
+            echo json_encode(array_values($slots));
+        } else {
+            echo json_encode($employees);
+        }
     } catch (PDOException $e) {
-        error_log('Błąd pobierania pracowników: ' . $e->getMessage());
+        error_log('Błąd pobierania dostępności: ' . $e->getMessage());
         http_response_code(500);
-        echo json_encode(['error' => 'Nie udało się pobrać pracowników.']);
+        echo json_encode(['error' => 'Nie udało się pobrać dostępności.']);
     }
 
     exit;
@@ -119,8 +166,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          */
         if ($action === 'cancel') {
             $reservation_id = filter_input(INPUT_POST, 'reservation_id', FILTER_VALIDATE_INT);
+            $expected_status = $_POST['expected_status'] ?? '';
 
-            if (!$reservation_id || $reservation_id <= 0) {
+            if (!$reservation_id || $reservation_id <= 0 || !in_array($expected_status, ['pending', 'confirmed'], true)) {
                 $errors[] = 'Nieprawidłowy numer rezerwacji.';
             } else {
                 try {
@@ -130,6 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         WHERE reservation_id = :reservation_id
                           AND user_id = :user_id
                           AND status IN ('pending', 'confirmed')
+                          AND status = :expected_status
                           AND (
                               reservation_date > CURDATE()
                               OR (
@@ -142,9 +191,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute([
                         'reservation_id' => $reservation_id,
                         'user_id' => $user_id,
+                        'expected_status' => $expected_status,
                     ]);
 
                     if ($stmt->rowCount() === 1) {
+                        $_SESSION['reservation_client_success'] = 'cancelled';
                         header('Location: dashboard_client.php?cancelled=1');
                         exit;
                     }
@@ -186,8 +237,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $errors[] = 'Podaj prawidłową godzinę.';
             }
 
-            if (!$guests || $guests < 1) {
-                $errors[] = 'Liczba gości musi wynosić co najmniej 1.';
+            if (!$guests || $guests < 1 || $guests > 4294967295) {
+                $errors[] = 'Liczba gości musi być liczbą całkowitą od 1 do 4294967295.';
             }
 
             if (mb_strlen($comment) > 1000) {
@@ -196,6 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if (empty($errors)) {
                 try {
+                    $pdo->beginTransaction();
                     /*
                      * Pobranie usługi. Czas trwania pobieramy z bazy,
                      * a nie z danych przesłanych przez przeglądarkę.
@@ -205,6 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         FROM services
                         WHERE service_id = :service_id
                           AND is_available = 1
+                        FOR SHARE
                     ");
                     $stmt->execute(['service_id' => $service_id]);
                     $service = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -220,7 +273,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $start = new DateTimeImmutable($date . ' ' . $time . ':00');
+                    if ($start->format('Y-m-d H:i') !== $date . ' ' . $time) {
+                        throw new RuntimeException('Wybrana godzina nie istnieje w strefie Europe/Warsaw z powodu zmiany czasu.');
+                    }
                     $end = $start->modify('+' . $duration . ' minutes');
+                    if ($start->format('P') !== $end->format('P')) {
+                        throw new RuntimeException('Wybierz przedział, który nie obejmuje zmiany czasu.');
+                    }
 
                     if ($end->format('Y-m-d') !== $date) {
                         throw new RuntimeException('Usługa musi zakończyć się przed północą.');
@@ -239,13 +298,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      * Dzięki temu dwa równoczesne zgłoszenia dotyczące
                      * tego samego pracownika są obsługiwane kolejno.
                      */
-                    $pdo->beginTransaction();
-
                     $stmt = $pdo->prepare("
-                        SELECT employee_id
-                        FROM employees
-                        WHERE employee_id = :employee_id
-                          AND is_active = 1
+                        SELECT e.employee_id
+                        FROM employees e
+                        JOIN users u ON u.user_id = e.user_id
+                        WHERE e.employee_id = :employee_id
+                          AND e.is_active = 1
+                          AND u.is_active = 1 AND u.role = 'employee'
                         FOR UPDATE
                     ");
                     $stmt->execute(['employee_id' => $employee_id]);
@@ -373,6 +432,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         throw new RuntimeException('Ten termin jest już zajęty. Wybierz inną godzinę.');
                     }
 
+                    // Oczekiwanie na blokady mogło trwać do rozpoczęcia terminu.
+                    if ($start <= new DateTimeImmutable()) {
+                        throw new RuntimeException('Termin już się rozpoczął. Wybierz późniejszą godzinę.');
+                    }
+
                     /*
                      * Ostateczny zapis rezerwacji.
                      */
@@ -411,8 +475,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'comment' => $comment !== '' ? $comment : null,
                     ]);
 
+                    $newReservationId = (int)$pdo->lastInsertId();
                     $pdo->commit();
 
+                    $_SESSION['reservation_client_success'] = 'created';
+                    $_SESSION['reservation_created_id'] = $newReservationId;
                     header('Location: dashboard_client.php?created=1');
                     exit;
 
@@ -440,12 +507,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
  * Pobranie dostępnych usług.
  */
 try {
-    $stmt = $pdo->query("
+    $stmt = $pdo->prepare("
         SELECT service_id, name, price, unit, duration_minutes
         FROM services
         WHERE is_available = 1
         ORDER BY name
     ");
+    $stmt->execute();
     $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     error_log('Błąd pobierania usług: ' . $e->getMessage());
@@ -510,13 +578,24 @@ try {
 <div class="container pb-5">
     <h1 class="mb-4">Panel klienta</h1>
 
-    <?php if (isset($_GET['created'])): ?>
+    <?php if ($success === 'created'): ?>
         <div class="alert alert-success">
             Rezerwacja została złożona i oczekuje na potwierdzenie.
+            <?php foreach ($reservations as $reservation): ?>
+                <?php if ((int)$reservation['reservation_id'] === $createdId): ?>
+                    <div class="mt-2">
+                        <strong><?= $escape($reservation['service_name']) ?></strong><br>
+                        Pracownik: <?= $escape($reservation['employee_name'].' '.$reservation['employee_surname']) ?><br>
+                        Termin: <?= $escape($reservation['reservation_date']) ?>,
+                        <?= $escape(substr($reservation['start_time'],0,5).'–'.substr($reservation['end_time'],0,5)) ?><br>
+                        Status: <?= $escape($status_labels[$reservation['status']][0] ?? $reservation['status']) ?>
+                    </div>
+                <?php endif; ?>
+            <?php endforeach; ?>
         </div>
     <?php endif; ?>
 
-    <?php if (isset($_GET['cancelled'])): ?>
+    <?php if ($success === 'cancelled'): ?>
         <div class="alert alert-success">
             Rezerwacja została anulowana.
         </div>
@@ -570,11 +649,6 @@ try {
                         >
                     </div>
 
-                    <div class="col-md-3">
-                        <label for="start_time" class="form-label">Godzina rozpoczęcia</label>
-                        <input type="time" class="form-control" id="start_time" name="start_time" required>
-                    </div>
-
                     <div class="col-md-6">
                         <label for="employee_id" class="form-label">Pracownik</label>
                         <select class="form-select" id="employee_id" name="employee_id" required disabled>
@@ -586,8 +660,13 @@ try {
                     </div>
 
                     <div class="col-md-3">
+                        <label for="start_time" class="form-label">Godzina rozpoczęcia</label>
+                        <select class="form-select" id="start_time" name="start_time" required disabled><option value="">Najpierw wybierz pracownika</option></select><small id="slot_info" class="text-muted" aria-live="polite"></small>
+                    </div>
+
+                    <div class="col-md-3">
                         <label for="guest_count" class="form-label">Liczba gości</label>
-                        <input type="number" class="form-control" id="guest_count" name="guest_count" min="1" value="1" required>
+                        <input type="number" class="form-control" id="guest_count" name="guest_count" min="1" max="4294967295" step="1" value="1" required>
                     </div>
 
                     <div class="col-md-9">
@@ -664,6 +743,7 @@ try {
                                             <form method="post" onsubmit="return confirm('Czy na pewno anulować tę rezerwację?');">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="action" value="cancel">
+                                                <input type="hidden" name="expected_status" value="<?= $escape($status) ?>">
                                                 <input type="hidden" name="reservation_id" value="<?= (int)$r['reservation_id'] ?>">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger">
                                                     Anuluj
@@ -688,8 +768,60 @@ const serviceSelect = document.getElementById('service_id');
 const dateInput = document.getElementById('reservation_date');
 const employeeSelect = document.getElementById('employee_id');
 const employeeInfo = document.getElementById('employee_info');
+let employeeRequest = 0;
+let slotRequest = 0;
+const timeSelect = document.getElementById('start_time');
+const slotInfo = document.getElementById('slot_info');
+function resetSlots() {
+    ++slotRequest;
+    if (!timeSelect) return;
+    timeSelect.replaceChildren(new Option('Najpierw wybierz pracownika', ''));
+    timeSelect.disabled = true;
+    slotInfo.textContent = '';
+}
+async function loadSlots() {
+    resetSlots();
+    if (!employeeSelect?.value || !serviceSelect?.value || !dateInput?.value) return;
+    const request = slotRequest;
+    slotInfo.textContent = 'Pobieranie wolnych godzin...';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+        const url = new URL('dashboard_client.php', location.href);
+        url.search = new URLSearchParams({ajax:'slots',service_id:serviceSelect.value,employee_id:employeeSelect.value,date:dateInput.value});
+        const response = await fetch(url, {signal: controller.signal});
+        if (!response.ok) throw new Error();
+        const slots = await response.json();
+        if (!Array.isArray(slots) || slots.some(t=>typeof t !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(t))) throw new Error();
+        if (request !== slotRequest) return;
+        timeSelect.replaceChildren(new Option(slots.length ? 'Wybierz godzinę' : 'Brak wolnych godzin', ''));
+        slots.forEach(t=>timeSelect.add(new Option(t,t)));
+        timeSelect.disabled = !slots.length;
+        slotInfo.textContent = slots.length ? 'Dostępność zostanie ponownie sprawdzona przy zapisie.' : 'Wybierz innego pracownika lub datę.';
+    } catch (error) {
+        if (request !== slotRequest) return;
+        slotInfo.textContent = 'Nie udało się pobrać godzin. Zmień wybór lub odśwież stronę i spróbuj ponownie.';
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+employeeSelect?.addEventListener('change', loadSlots);
+const bookingForm = timeSelect?.closest('form');
+let submitting = false;
+bookingForm?.addEventListener('submit', event => {
+    if (submitting || timeSelect.disabled || !timeSelect.value) { event.preventDefault(); return; }
+    submitting = true;
+    bookingForm.querySelector('button[type="submit"]').disabled = true;
+});
+window.addEventListener('pageshow', () => {
+    submitting = false;
+    if (bookingForm) bookingForm.querySelector('button[type="submit"]').disabled = false;
+});
 
 async function loadEmployees() {
+    if (!serviceSelect || !dateInput || !employeeSelect || !employeeInfo) return;
+    resetSlots();
+    const request = ++employeeRequest;
     const serviceId = serviceSelect.value;
     const date = dateInput.value;
 
@@ -704,6 +836,8 @@ async function loadEmployees() {
 
     employeeSelect.innerHTML = '<option value="">Ładowanie...</option>';
     employeeInfo.textContent = 'Sprawdzanie dostępnych pracowników...';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
     try {
         const url = new URL('dashboard_client.php', window.location.href);
@@ -711,15 +845,17 @@ async function loadEmployees() {
         url.searchParams.set('service_id', serviceId);
         url.searchParams.set('date', date);
 
-        const response = await fetch(url);
+        const response = await fetch(url, {signal: controller.signal});
         if (!response.ok) {
             throw new Error('Błąd pobierania danych');
         }
 
         const employees = await response.json();
+        if (request !== employeeRequest) return;
         employeeSelect.innerHTML = '';
 
-        if (!Array.isArray(employees) || employees.length === 0) {
+        if (!Array.isArray(employees) || employees.some(e=>!e || !e.employee_id || typeof e.name !== 'string' || typeof e.surname !== 'string')) throw new Error();
+        if (employees.length === 0) {
             employeeSelect.innerHTML = '<option value="">Brak dostępnych pracowników</option>';
             employeeInfo.textContent = 'Wybierz inną datę lub usługę.';
             return;
@@ -738,13 +874,17 @@ async function loadEmployees() {
         employeeSelect.disabled = false;
         employeeInfo.textContent = 'Wybierz pracownika z listy. Dokładna dostępność godziny zostanie sprawdzona przy zapisie.';
     } catch (error) {
+        if (request !== employeeRequest) return;
         employeeSelect.innerHTML = '<option value="">Nie udało się pobrać pracowników</option>';
         employeeInfo.textContent = 'Odśwież stronę i spróbuj ponownie.';
+    } finally {
+        clearTimeout(timeout);
     }
 }
 
-serviceSelect.addEventListener('change', loadEmployees);
-dateInput.addEventListener('change', loadEmployees);
+serviceSelect?.addEventListener('change', loadEmployees);
+dateInput?.addEventListener('change', loadEmployees);
+loadEmployees();
 </script>
 
 </body>

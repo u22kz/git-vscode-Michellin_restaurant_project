@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('Europe/Warsaw');
 /**
  * Plik: auth_check.php
  * Cel: Jeden, wspólny plik z funkcjami do obsługi sesji PHP oraz kontroli

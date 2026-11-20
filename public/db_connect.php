@@ -50,6 +50,10 @@ $options = [
 
 try {
     $pdo = new PDO($dsn, $db_user, $db_pass, $options);
+    // Offset Warszawy dla bieżącego połączenia, również bez tabel stref MySQL.
+    $timezone = (new DateTimeImmutable('now', new DateTimeZone('Europe/Warsaw')))->format('P');
+    $stmt = $pdo->prepare('SET time_zone = ?');
+    $stmt->execute([$timezone]);
 } catch (PDOException $e) {
     $connectionFailure('Blad polaczenia PDO: ' . $e->getMessage());
 }
