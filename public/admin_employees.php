@@ -1,4 +1,3 @@
-
 <?php
 require_once 'auth_check.php';
 require_once 'db_connect.php';
@@ -20,7 +19,7 @@ $selectedServiceIds = [];
 
 // Obsługa formularzy
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_verify();
+    csrf_require_valid();
 
     $action = $_POST['action'] ?? '';
 

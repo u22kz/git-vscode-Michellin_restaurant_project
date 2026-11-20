@@ -7,6 +7,7 @@
  */
 require_once 'auth_check.php';
 require_once 'db_connect.php';
+require_once 'form_validation.php';
 
 // Dostępne dla każdego zalogowanego użytkownika, niezależnie od roli
 require_login();
@@ -29,7 +30,8 @@ try {
 
     if ($user === false) {
         // Sesja wskazuje na użytkownika, którego już nie ma w bazie
-        header('Location: logout.php');
+        destroy_user_session();
+        header('Location: login.php');
         exit;
     }
 } catch (PDOException $e) {
@@ -38,28 +40,24 @@ try {
 }
 
 // --- Obsługa formularza edycji danych (imię, nazwisko, telefon) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_info'], $_POST['change_password'])) {
+    http_response_code(400);
+    exit('Wyślij jeden formularz naraz.');
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_info'])) {
 
     if (!csrf_verify()) {
         $info_errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
     }
 
-    $name    = trim($_POST['name'] ?? '');
-    $surname = trim($_POST['surname'] ?? '');
-    $phone   = trim($_POST['phone'] ?? '');
+    $name    = trim(post_string('name'));
+    $surname = trim(post_string('surname'));
+    $phone   = trim(post_string('phone'));
 
     if ($name === '' || $surname === '' || $phone === '') {
         $info_errors[] = 'Wszystkie pola są wymagane.';
     }
-    if (mb_strlen($name) > 50) {
-        $info_errors[] = 'Imię może mieć maksymalnie 50 znaków.';
-    }
-    if (mb_strlen($surname) > 80) {
-        $info_errors[] = 'Nazwisko może mieć maksymalnie 80 znaków.';
-    }
-    if ($phone !== '' && !preg_match('/^[0-9+\-\s]{9,20}$/', $phone)) {
-        $info_errors[] = 'Numer telefonu ma nieprawidłowy format.';
-    }
+    $info_errors = array_merge($info_errors, personal_details_errors($name, $surname, $phone));
 
     if (empty($info_errors)) {
         try {
@@ -95,16 +93,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
         $password_errors[] = 'Błąd weryfikacji formularza (token wygasł). Odśwież stronę i spróbuj ponownie.';
     }
 
-    $current_password = $_POST['current_password'] ?? '';
-    $new_password      = $_POST['new_password'] ?? '';
-    $new_password_confirm = $_POST['new_password_confirm'] ?? '';
+    $current_password = post_string('current_password');
+    $new_password      = post_string('new_password');
+    $new_password_confirm = post_string('new_password_confirm');
 
     if ($current_password === '' || $new_password === '' || $new_password_confirm === '') {
         $password_errors[] = 'Wszystkie pola hasła są wymagane.';
-    } elseif (!password_verify($current_password, $user['password'])) {
+    } elseif (strlen($current_password) > 72 || str_contains($current_password, "\0")
+        || !password_verify($current_password, $user['password'])) {
         $password_errors[] = 'Aktualne hasło jest nieprawidłowe.';
-    } elseif (strlen($new_password) < 8) {
-        $password_errors[] = 'Nowe hasło musi mieć co najmniej 8 znaków.';
+    } elseif (($passwordError = password_validation_error($new_password)) !== null) {
+        $password_errors[] = $passwordError;
     } elseif ($new_password !== $new_password_confirm) {
         $password_errors[] = 'Nowe hasła nie są identyczne.';
     }
@@ -112,9 +111,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     if (empty($password_errors)) {
         try {
             $new_hash = password_hash($new_password, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare('UPDATE users SET password = :password WHERE user_id = :id');
-            $stmt->execute(['password' => $new_hash, 'id' => $user_id]);
-            $password_success = true;
+            $stmt = $pdo->prepare('UPDATE users SET password = :password
+                WHERE user_id = :id AND password = :old_password AND is_active = 1');
+            $stmt->execute(['password' => $new_hash, 'id' => $user_id, 'old_password' => $user['password']]);
+            if ($stmt->rowCount() === 1) {
+                session_regenerate_id(true);
+                $_SESSION['password_stamp'] = hash('sha256', $new_hash);
+                unset($_SESSION['csrf_token']);
+                $password_success = true;
+            } else {
+                $password_errors[] = 'Dane konta zmieniły się. Zaloguj się ponownie.';
+            }
         } catch (PDOException $e) {
             error_log('Błąd zmiany hasła: ' . $e->getMessage());
             $password_errors[] = 'Wystąpił błąd podczas zmiany hasła.';
@@ -137,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
         <a class="navbar-brand" href="index.php">Michelin Restaurant</a>
         <div>
             <a class="btn btn-outline-light btn-sm me-2" href="<?= htmlspecialchars(dashboard_url_for_role(current_role()), ENT_QUOTES, 'UTF-8') ?>">Mój panel</a>
-            <a class="btn btn-danger btn-sm" href="logout.php">Wyloguj</a>
+            <?= logout_button('btn btn-danger btn-sm') ?>
         </div>
     </div>
 </nav>

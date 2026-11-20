@@ -1,4 +1,3 @@
-
 <?php
 require_once 'auth_check.php';
 require_once 'db_connect.php';
@@ -22,7 +21,7 @@ $allowedStatuses = array_keys($statusLabels);
 
 // Zmiana statusu rezerwacji
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_verify();
+    csrf_require_valid();
 
     $action = $_POST['action'] ?? '';
 

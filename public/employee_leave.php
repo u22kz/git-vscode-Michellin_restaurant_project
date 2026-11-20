@@ -34,7 +34,7 @@ $messageType = 'info';
 
 // Obsługa formularzy
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_verify();
+    csrf_require_valid();
 
     $action = $_POST['action'] ?? '';
 
@@ -191,9 +191,7 @@ $statusColors = [
             <a href="dashboard_employee.php" class="btn btn-outline-light btn-sm">
                 Panel pracownika
             </a>
-            <a href="logout.php" class="btn btn-outline-danger btn-sm">
-                Wyloguj
-            </a>
+            <?= logout_button('btn btn-outline-danger btn-sm') ?>
         </div>
     </div>
 </nav>

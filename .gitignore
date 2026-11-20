@@ -1,1 +1,12 @@
-/private/db_credentials.php
+# Konfiguracja i sekrety (przykład pozostaje w repozytorium).
+/private/*
+!/private/db_credentials.example.php
+.env
+.env.*
+!.env.example
+**/db_credentials.php
+**/db_credentials.php.*
+*.log
+
+# Lokalne narzędzia i dane używane do testów.
+/.tools/

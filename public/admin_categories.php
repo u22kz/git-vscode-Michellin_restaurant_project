@@ -1,4 +1,3 @@
-
 <?php
 require_once 'auth_check.php';
 require_once 'db_connect.php';
@@ -34,7 +33,7 @@ function category_slug_base(string $name): string
 // Zapewnienie unikalności slug.
 function category_unique_slug(PDO $pdo, string $name, ?int $excludeId = null): string
 {
-    $base = category_slug_base($name);
+    $base = substr(category_slug_base($name), 0, 100);
     $slug = $base;
     $suffix = 2;
 
@@ -54,7 +53,8 @@ function category_unique_slug(PDO $pdo, string $name, ?int $excludeId = null): s
             return $slug;
         }
 
-        $slug = $base . '-' . $suffix;
+        $ending = '-' . $suffix;
+        $slug = rtrim(substr($base, 0, 100 - strlen($ending)), '-') . $ending;
         $suffix++;
     }
 }
@@ -162,8 +162,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Walidacja kolejności wyświetlania.
             $sortOrder = filter_var($sortRaw, FILTER_VALIDATE_INT);
 
-            if ($sortOrder === false || $sortOrder < 0) {
-                $errors[] = 'Kolejność musi być liczbą całkowitą nie mniejszą niż zero.';
+            if ($sortOrder === false || $sortOrder < 0 || $sortOrder > 2147483647) {
+                $errors[] = 'Kolejność musi być liczbą całkowitą od 0 do 2147483647.';
+            }
+            if (strlen($description) > 65535) {
+                $errors[] = 'Opis kategorii jest zbyt długi (maksymalnie 65535 bajtów UTF-8).';
             }
 
             // Walidacja kategorii nadrzędnej.
@@ -180,6 +183,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             try {
+
+                // Wspólna kolejność blokad chroni hierarchię i przydzielanie slugów
+                // przed równoczesnymi zmianami kategorii w tym panelu.
+                $pdo->beginTransaction();
+                $lock = $pdo->prepare('SELECT category_id FROM categories ORDER BY category_id FOR UPDATE');
+                $lock->execute();
+                $lock->fetchAll();
 
                 // Sprawdzenie, czy edytowana kategoria istnieje.
                 if ($categoryId !== null) {
@@ -262,6 +272,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'sort_order' => $sortOrder
                         ]);
 
+                        $pdo->commit();
                         header('Location: admin_categories.php?status=created');
                         exit;
 
@@ -286,12 +297,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'id' => $categoryId
                         ]);
 
+                        $pdo->commit();
                         header('Location: admin_categories.php?status=updated');
                         exit;
                     }
                 }
 
+                $pdo->rollBack();
             } catch (PDOException $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
                 error_log('Błąd zapisu kategorii: ' . $e->getMessage());
                 $errors[] = 'Wystąpił błąd podczas zapisywania kategorii.';
             }
@@ -309,6 +325,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
 
                 try {
+
+                    $pdo->beginTransaction();
+                    $lock = $pdo->prepare('SELECT category_id FROM categories ORDER BY category_id FOR UPDATE');
+                    $lock->execute();
+                    $lock->fetchAll();
 
                     $stmt = $pdo->prepare(
                         'SELECT 1 FROM categories WHERE category_id = :id'
@@ -348,11 +369,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         );
                         $stmt->execute(['id' => $deleteId]);
 
+                        $pdo->commit();
                         header('Location: admin_categories.php?status=deleted');
                         exit;
                     }
 
+                    $pdo->rollBack();
                 } catch (PDOException $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
                     error_log('Błąd usuwania kategorii: ' . $e->getMessage());
                     $errors[] = 'Wystąpił błąd podczas usuwania kategorii.';
                 }
@@ -407,7 +433,7 @@ $parentOptions = [];
 
 try {
 
-    $stmt = $pdo->query(
+    $stmt = $pdo->prepare(
         'SELECT
             c.category_id,
             c.parent_id,
@@ -427,14 +453,16 @@ try {
          ORDER BY c.sort_order ASC, c.name ASC'
     );
 
+    $stmt->execute();
     $categories = $stmt->fetchAll();
 
-    $stmt = $pdo->query(
+    $stmt = $pdo->prepare(
         'SELECT category_id, name
          FROM categories
          ORDER BY sort_order ASC, name ASC'
     );
 
+    $stmt->execute();
     $parentOptions = $stmt->fetchAll();
 
 } catch (PDOException $e) {
@@ -474,9 +502,7 @@ try {
                 Profil
             </a>
 
-            <a href="logout.php" class="btn btn-danger btn-sm">
-                Wyloguj
-            </a>
+            <?= logout_button('btn btn-danger btn-sm') ?>
         </div>
 
     </div>

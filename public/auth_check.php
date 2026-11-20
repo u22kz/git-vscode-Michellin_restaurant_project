@@ -13,8 +13,22 @@
 // Uruchamiamy sesję tylko wtedy, gdy jeszcze nie jest aktywna
 // (zapobiega błędowi przy wielokrotnym session_start()).
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.use_trans_sid', '0');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    if (!session_start()) {
+        http_response_code(503);
+        exit('Nie można uruchomić sesji. Spróbuj ponownie później.');
+    }
 }
+header('Cache-Control: no-store');
 
 /**
  * Sprawdza, czy użytkownik jest zalogowany.
@@ -103,7 +117,7 @@ function dashboard_url_for_role(string $role): string
  * ------------------------------------------------------------------
  * OCHRONA CSRF (Cross-Site Request Forgery)
  * ------------------------------------------------------------------
- * Token CSRF to losowy, jednorazowy "sekret" zapisywany w sesji
+ * Token CSRF to losowy sekret przypisany do sesji, zapisywany w sesji
  * użytkownika i jednocześnie wysyłany jako ukryte pole w każdym
  * formularzu POST. Przy odbiorze formularza sprawdzamy, czy token
  * z formularza zgadza się z tokenem w sesji - jeśli nie, żądanie
@@ -120,7 +134,7 @@ function dashboard_url_for_role(string $role): string
  */
 function csrf_token(): string
 {
-    if (empty($_SESSION['csrf_token'])) {
+    if (empty($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
     return $_SESSION['csrf_token'];
@@ -150,9 +164,87 @@ function csrf_verify(): bool
 {
     $sent_token = $_POST['csrf_token'] ?? '';
 
-    if (!is_string($sent_token) || $sent_token === '' || empty($_SESSION['csrf_token'])) {
+    if (!is_string($sent_token) || $sent_token === ''
+        || !isset($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
         return false;
     }
 
     return hash_equals($_SESSION['csrf_token'], $sent_token);
+}
+
+/** Zatrzymuje żądanie, zanim formularz będzie mógł zmienić dane. */
+function csrf_require_valid(): void
+{
+    if (!csrf_verify()) {
+        http_response_code(403);
+        exit('Nieprawidłowy token formularza. Odśwież stronę i spróbuj ponownie.');
+    }
+}
+
+/** Usuwa zarówno dane sesji na serwerze, jak i jej ciasteczko. */
+function destroy_user_session(): void
+{
+    $_SESSION = [];
+    $params = session_get_cookie_params();
+    setcookie(session_name(), '', [
+        'expires' => time() - 42000,
+        'path' => $params['path'],
+        'domain' => $params['domain'],
+        'secure' => $params['secure'],
+        'httponly' => $params['httponly'],
+        'samesite' => $params['samesite'],
+    ]);
+    session_destroy();
+}
+
+/** Przycisk zachowuje wygląd nawigacji, ale wylogowanie jest operacją POST. */
+function logout_button(string $classes = 'btn btn-danger btn-sm'): string
+{
+    return '<form method="post" action="logout.php" class="d-inline">'
+        . csrf_field() . '<button type="submit" class="'
+        . htmlspecialchars($classes, ENT_QUOTES, 'UTF-8') . '">Wyloguj</button></form>';
+}
+
+// Sesja identyfikuje konto; bieżące uprawnienia zawsze pochodzą z bazy.
+if (isset($_SESSION['user_id'])) {
+    require_once __DIR__ . '/db_connect.php';
+    try {
+        $authStmt = $pdo->prepare('SELECT user_id, name, surname, role, is_active, password
+            FROM users WHERE user_id = ?');
+        $authStmt->execute([$_SESSION['user_id']]);
+        $authUser = $authStmt->fetch();
+        $passwordStamp = $_SESSION['password_stamp'] ?? '';
+        if (!$authUser || (int)$authUser['is_active'] !== 1
+            || !in_array($authUser['role'], ['client', 'employee', 'admin'], true)
+            || !is_string($passwordStamp)
+            || !hash_equals(hash('sha256', $authUser['password']), $passwordStamp)) {
+            // Zmiana hasła unieważnia też sesje otwarte na innych urządzeniach.
+            $_SESSION = [];
+            session_regenerate_id(true);
+        } else {
+            if (($_SESSION['role'] ?? null) !== $authUser['role']) {
+                session_regenerate_id(true);
+                unset($_SESSION['csrf_token']);
+            }
+            $_SESSION['role'] = $authUser['role'];
+            $_SESSION['name'] = $authUser['name'] . ' ' . $authUser['surname'];
+        }
+        unset($authUser, $authStmt, $passwordStamp);
+    } catch (PDOException $e) {
+        error_log('Błąd weryfikacji sesji: ' . $e->getMessage());
+        http_response_code(503);
+        exit('Nie można zweryfikować sesji. Spróbuj ponownie później.');
+    }
+}
+
+// Ochrona wspólna dla wszystkich formularzy korzystających z auth_check.php.
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
+    csrf_require_valid();
+}
+
+require_once __DIR__ . '/form_validation.php';
+$allowServiceIds = basename($_SERVER['SCRIPT_FILENAME'] ?? '') === 'admin_employees.php';
+if (!request_has_valid_shape($_GET) || !request_has_valid_shape($_POST, $allowServiceIds)) {
+    http_response_code(400);
+    exit('Nieprawidłowy format danych formularza. Odśwież stronę i spróbuj ponownie.');
 }

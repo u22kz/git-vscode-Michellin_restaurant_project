@@ -5,26 +5,15 @@
  */
 require_once 'auth_check.php';
 
-// Czyścimy wszystkie dane zapisane w sesji
-$_SESSION = [];
-
-// Usuwamy ciasteczko sesyjne po stronie przeglądarki (jeśli istnieje)
-if (ini_get('session.use_cookies')) {
-    $params = session_get_cookie_params();
-    setcookie(
-        session_name(),
-        '',
-        time() - 42000,
-        $params['path'],
-        $params['domain'],
-        $params['secure'],
-        $params['httponly']
-    );
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Allow: POST');
+    http_response_code(405);
+    exit('Użyj przycisku Wyloguj w aplikacji.');
 }
 
-// Niszczymy sesję po stronie serwera
-session_destroy();
+csrf_require_valid();
+destroy_user_session();
 
 // Po wylogowaniu odsyłamy na stronę logowania
-header('Location: login.php');
+header('Location: login.php', true, 303);
 exit;
