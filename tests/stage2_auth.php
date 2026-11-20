@@ -261,11 +261,11 @@ try {
     $before = snapshot_stage2($pdo);
     [$status, $body] = $client->post('dashboard_client.php', ['action' => 'create', 'service_id' => 1, 'employee_id' => 1,
         'reservation_date' => date('Y-m-d', strtotime('next Saturday')), 'start_time' => '18:00', 'guest_count' => '4294967296']);
-    check_stage2($status === 200 && str_contains($body, 'Wystąpił błąd bazy danych podczas rezerwacji.')
+    check_stage2($status === 200 && str_contains($body, 'Liczba gości musi być liczbą całkowitą')
         && !str_contains($body, 'SQLSTATE') && !str_contains($body, 'Out of range')
-        && $before === snapshot_stage2($pdo), 'Błąd PDO jest ukryty, a transakcja wycofana');
+        && $before === snapshot_stage2($pdo), 'Przekroczenie zakresu gości jest odrzucane bez zapisu');
 
-    [$status] = $admin->post('admin_reservations.php', ['action' => 'change_status', 'reservation_id' => 1, 'status' => 'completed']);
+    [$status] = $admin->post('admin_reservations.php', ['action' => 'change_status', 'reservation_id' => 1, 'status' => 'completed', 'expected_status' => 'confirmed']);
     check_stage2($status === 302 && $pdo->query('SELECT status FROM reservations WHERE reservation_id = 1')->fetchColumn() === 'completed', 'Poprawny CSRF: administrator zmienia status rezerwacji');
     [$status] = $admin->post('admin_employees.php', ['action' => 'toggle', 'employee_id' => 7]);
     check_stage2($status === 302 && (int)$pdo->query('SELECT is_active FROM employees WHERE employee_id = 7')->fetchColumn() === 0, 'Poprawny CSRF: administrator zmienia aktywność pracownika');
@@ -274,11 +274,11 @@ try {
     [$status] = $employee->post('employee_leave.php', ['action' => 'create', 'start_date' => '2090-01-02', 'end_date' => '2090-01-03']);
     check_stage2($status === 302 && (int)$pdo->query('SELECT COUNT(*) FROM employee_leave_requests WHERE employee_id = 1')->fetchColumn() === 1, 'Poprawny CSRF: pracownik składa wniosek');
     $before = snapshot_stage2($pdo);
-    [$status] = $employee->post('dashboard_employee.php', ['reservation_id' => 2, 'status' => 'cancelled', 'employee_id' => 2]);
+    [$status] = $employee->post('dashboard_employee.php', ['reservation_id' => 2, 'status' => 'cancelled', 'expected_status' => 'pending', 'employee_id' => 2]);
     check_stage2($status === 200 && $before === snapshot_stage2($pdo), 'Pracownik nie zmienia rezerwacji innego pracownika przez podmianę ID');
     $pdo->exec("UPDATE reservations SET reservation_date = CURRENT_DATE + INTERVAL 1 MONTH, status = 'confirmed' WHERE reservation_id = 1");
     $before = snapshot_stage2($pdo);
-    [$status] = $client->post('dashboard_client.php', ['action' => 'cancel', 'reservation_id' => 1, 'user_id' => 1]);
+    [$status] = $client->post('dashboard_client.php', ['action' => 'cancel', 'reservation_id' => 1, 'expected_status' => 'confirmed', 'user_id' => 1]);
     check_stage2($status === 200 && $before === snapshot_stage2($pdo), 'Klient nie anuluje cudzej rezerwacji przez podmianę ID');
 
     $client->request('profile.php?user_id=6');
