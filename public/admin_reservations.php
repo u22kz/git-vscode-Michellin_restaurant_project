@@ -2,8 +2,11 @@
 require_once 'auth_check.php';
 require_once 'db_connect.php';
 require_role(['admin']);
+require_once __DIR__ . '/reservation_status.php';
 
 $errors = [];
+$success = $_SERVER['REQUEST_METHOD'] === 'GET' && !empty($_SESSION['reservation_admin_updated']);
+unset($_SESSION['reservation_admin_updated']);
 
 $escape = static function ($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
@@ -26,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'change_status') {
-        $reservationId = (int)($_POST['reservation_id'] ?? 0);
+        $reservationId = filter_var($_POST['reservation_id'] ?? '', FILTER_VALIDATE_INT);
         $newStatus = $_POST['status'] ?? '';
 
         if ($reservationId <= 0) {
@@ -34,15 +37,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!in_array($newStatus, $allowedStatuses, true)) {
             $errors[] = 'Wybrano nieprawidłowy status.';
         } else {
-            $stmt = $pdo->prepare("
-                UPDATE reservations
-                SET status = ?
-                WHERE reservation_id = ?
-            ");
-            $stmt->execute([$newStatus, $reservationId]);
-
-            header('Location: admin_reservations.php?updated=1');
-            exit;
+            try {
+                change_reservation_status($pdo, $reservationId, $newStatus, $_POST['expected_status'] ?? '');
+                $_SESSION['reservation_admin_updated'] = true;
+                $redirectFilters = array_intersect_key($_GET, array_flip(['date_from', 'date_to', 'status', 'employee_id', 'page']));
+                header('Location: admin_reservations.php?' . http_build_query($redirectFilters + ['updated' => '1']));
+                exit;
+            } catch (PDOException $e) {
+                error_log('Błąd zmiany statusu rezerwacji: ' . $e->getMessage());
+                $errors[] = 'Nie udało się zmienić statusu. Odśwież stronę i spróbuj ponownie.';
+            } catch (RuntimeException $e) {
+                $errors[] = $e->getMessage();
+            }
         }
     }
 }
@@ -51,8 +57,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $filterFrom = trim($_GET['date_from'] ?? '');
 $filterTo = trim($_GET['date_to'] ?? '');
 $filterStatus = $_GET['status'] ?? '';
-$filterEmployee = (int)($_GET['employee_id'] ?? 0);
-$page = max(1, (int)($_GET['page'] ?? 1));
+$filterEmployee = filter_var($_GET['employee_id'] ?? '0', FILTER_VALIDATE_INT, ['options'=>['min_range'=>0,'max_range'=>4294967295]]);
+$page = filter_var($_GET['page'] ?? '1', FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+if ($filterEmployee === false) { $errors[] = 'Nieprawidłowy filtr pracownika.'; $filterEmployee = 0; }
+if ($page === false) { $errors[] = 'Nieprawidłowy numer strony.'; $page = 1; }
 
 $isValidDate = static function ($date) {
     if ($date === '') {
@@ -164,7 +172,7 @@ $sql = "
     JOIN users eu ON eu.user_id = e.user_id
     JOIN services s ON s.service_id = r.service_id
     $whereSql
-    ORDER BY r.reservation_date DESC, r.start_time DESC
+    ORDER BY r.reservation_date DESC, r.start_time DESC, r.reservation_id DESC
     LIMIT $perPage OFFSET $offset
 ";
 
@@ -210,7 +218,7 @@ $reservations = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     <?php endforeach; ?>
 
-    <?php if (isset($_GET['updated'])): ?>
+    <?php if ($success): ?>
         <div class="alert alert-success">
             Status rezerwacji został zaktualizowany.
         </div>
@@ -380,8 +388,11 @@ $reservations = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                     </td>
 
                                     <td>
+                                        <?php $nextStatuses = reservation_transitions($reservation['status']); ?>
+                                        <?php if ($nextStatuses): ?>
                                         <form method="POST" class="d-flex gap-2">
                                             <?= csrf_field() ?>
+                                            <input type="hidden" name="expected_status" value="<?= $escape($reservation['status']) ?>">
 
                                             <input
                                                 type="hidden"
@@ -399,12 +410,12 @@ $reservations = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 name="status"
                                                 class="form-select form-select-sm"
                                             >
-                                                <?php foreach ($statusLabels as $value => $label): ?>
+                                                <?php foreach ($nextStatuses as $value): ?>
                                                     <option
                                                         value="<?= $escape($value) ?>"
                                                         <?= $reservation['status'] === $value ? 'selected' : '' ?>
                                                     >
-                                                        <?= $escape($label) ?>
+                                                        <?= $escape($statusLabels[$value]) ?>
                                                     </option>
                                                 <?php endforeach; ?>
                                             </select>
@@ -416,6 +427,7 @@ $reservations = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                                 Zapisz
                                             </button>
                                         </form>
+                                        <?php else: ?><span class="text-muted">Status końcowy</span><?php endif; ?>
                                     </td>
                                 </tr>
 

@@ -9,6 +9,7 @@ require_once 'db_connect.php';
 
 // Tylko pracownik ma dostęp do tego panelu
 require_role(['employee']);
+require_once __DIR__ . '/reservation_status.php';
 
 $user_id = current_user_id();
 
@@ -23,7 +24,8 @@ $status_labels = [
 ];
 
 $errors  = [];
-$success = false;
+$success = $_SERVER['REQUEST_METHOD'] === 'GET' && !empty($_SESSION['reservation_employee_updated']);
+unset($_SESSION['reservation_employee_updated']);
 
 // --- Sprawdzenie, czy zalogowany użytkownik ma przypisany profil pracownika ---
 try {
@@ -58,27 +60,15 @@ if ($employee_id !== null && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($errors)) {
         try {
-            // Warunek "AND employee_id = :employee_id" gwarantuje, że pracownik
-            // może zmieniać status WYŁĄCZNIE swoich własnych rezerwacji.
-            $stmt = $pdo->prepare(
-                'UPDATE reservations
-                 SET status = :status
-                 WHERE reservation_id = :reservation_id AND employee_id = :employee_id'
-            );
-            $stmt->execute([
-                'status'         => $new_status,
-                'reservation_id' => $reservation_id,
-                'employee_id'    => $employee_id,
-            ]);
-
-            if ($stmt->rowCount() > 0) {
-                $success = true;
-            } else {
-                $errors[] = 'Nie znaleziono rezerwacji lub nie masz do niej uprawnień.';
-            }
+            change_reservation_status($pdo, $reservation_id, $new_status, $_POST['expected_status'] ?? '', $employee_id);
+            $_SESSION['reservation_employee_updated'] = true;
+            header('Location: dashboard_employee.php');
+            exit;
         } catch (PDOException $e) {
             error_log('Błąd zmiany statusu rezerwacji: ' . $e->getMessage());
             $errors[] = 'Wystąpił błąd podczas zapisu statusu.';
+        } catch (RuntimeException $e) {
+            $errors[] = $e->getMessage();
         }
     }
 }
@@ -189,11 +179,14 @@ if ($employee_id !== null) {
                                         <td><?= (int) $r['guest_count'] ?></td>
                                         <td><span class="badge <?= htmlspecialchars($status_class, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($status_label, ENT_QUOTES, 'UTF-8') ?></span></td>
                                         <td>
+                                            <?php $nextStatuses = reservation_transitions($status_key); ?>
+                                            <?php if ($nextStatuses): ?>
                                             <form method="post" action="dashboard_employee.php" class="d-flex gap-2">
                                                 <?= csrf_field() ?>
+                                                <input type="hidden" name="expected_status" value="<?= htmlspecialchars($status_key, ENT_QUOTES, 'UTF-8') ?>">
                                                 <input type="hidden" name="reservation_id" value="<?= (int) $r['reservation_id'] ?>">
                                                 <select name="status" class="form-select form-select-sm">
-                                                    <?php foreach ($allowed_statuses as $status_option): ?>
+                                                    <?php foreach ($nextStatuses as $status_option): ?>
                                                         <option value="<?= htmlspecialchars($status_option, ENT_QUOTES, 'UTF-8') ?>"
                                                             <?= $status_option === $status_key ? 'selected' : '' ?>>
                                                             <?= htmlspecialchars($status_labels[$status_option][0], ENT_QUOTES, 'UTF-8') ?>
@@ -202,6 +195,7 @@ if ($employee_id !== null) {
                                                 </select>
                                                 <button type="submit" class="btn btn-sm btn-outline-primary">Zapisz</button>
                                             </form>
+                                            <?php else: ?><span class="text-muted">Status końcowy</span><?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

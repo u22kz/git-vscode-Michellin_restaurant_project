@@ -25,19 +25,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Aktywacja / dezaktywacja pracownika
     if ($action === 'toggle') {
-        $employeeId = (int)($_POST['employee_id'] ?? 0);
+        $employeeId = filter_var($_POST['employee_id'] ?? '', FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => 4294967295]]);
 
-        if ($employeeId > 0) {
+        if ($employeeId !== false) {
+            try {
             $stmt = $pdo->prepare("
                 UPDATE employees
                 SET is_active = IF(is_active = 1, 0, 1)
                 WHERE employee_id = ?
             ");
             $stmt->execute([$employeeId]);
+            if ($stmt->rowCount() === 1) {
+                header('Location: admin_employees.php');
+                exit;
+            }
+            $errors[] = 'Nie znaleziono pracownika.';
+            } catch (PDOException $e) {
+                $errors[] = 'Nie udało się zmienić aktywności pracownika.';
+            }
+        } else {
+            $errors[] = 'Nieprawidłowy identyfikator pracownika.';
         }
-
-        header('Location: admin_employees.php');
-        exit;
     }
 
     // Dodawanie lub edytowanie pracownika
@@ -46,12 +55,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $formUserId = (int)($_POST['user_id'] ?? 0);
         $formPosition = trim($_POST['position'] ?? '');
         $formDescription = trim($_POST['description'] ?? '');
-        $formActive = isset($_POST['is_active']);
+        $formActive = ($_POST['is_active'] ?? '0') === '1';
+        if (!in_array($_POST['is_active'] ?? '0', ['0', '1'], true)) {
+            $errors[] = 'Nieprawidłowa aktywność pracownika.';
+        }
+        foreach (['employee_id' => 0, 'user_id' => 0] as $field => $min) {
+            if (filter_var($_POST[$field] ?? '0', FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => $min, 'max_range' => 4294967295]]) === false) {
+                $errors[] = 'Nieprawidłowy identyfikator.';
+            }
+        }
+        if (strlen($formDescription) > 65535) $errors[] = 'Opis jest zbyt długi.';
 
         $serviceIds = $_POST['service_ids'] ?? [];
 
         if (!is_array($serviceIds)) {
+            $errors[] = 'Nieprawidłowa lista usług.';
             $serviceIds = [];
+        }
+        foreach ($serviceIds as $serviceId) {
+            if (filter_var($serviceId, FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 1, 'max_range' => 4294967295]]) === false) {
+                $errors[] = 'Nieprawidłowy identyfikator usługi.';
+            }
         }
 
         $selectedServiceIds = array_values(array_unique(
@@ -125,6 +151,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($errors)) {
             try {
                 $pdo->beginTransaction();
+                // Serializacja edycji profilu i zastępowania listy przypisań.
+                $lock = $pdo->prepare('SELECT employee_id FROM employees WHERE employee_id = ? FOR UPDATE');
+                $lock->execute([$formEmployeeId]);
+                if ($formEmployeeId > 0 && !$lock->fetch()) {
+                    throw new PDOException('Profil nie istnieje.');
+                }
+                if ($formEmployeeId === 0) {
+                    $lock = $pdo->prepare("SELECT user_id FROM users WHERE user_id = ? AND role = 'employee' AND is_active = 1 FOR UPDATE");
+                    $lock->execute([$formUserId]);
+                    if (!$lock->fetch()) throw new PDOException('Konto nie jest dostępne.');
+                }
 
                 if ($formEmployeeId > 0) {
                     $stmt = $pdo->prepare("
@@ -235,7 +272,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' && isset($_GET['edit'])) {
 }
 
 // Lista kont, które mogą otrzymać profil pracownika
-$stmt = $pdo->query("
+$stmt = $pdo->prepare("
     SELECT u.user_id, u.name, u.surname, u.customer_email
     FROM users u
     LEFT JOIN employees e ON e.user_id = u.user_id
@@ -244,23 +281,27 @@ $stmt = $pdo->query("
       AND e.employee_id IS NULL
     ORDER BY u.surname, u.name
 ");
+$stmt->execute();
 $candidateUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Lista wszystkich usług
-$stmt = $pdo->query("
+$stmt = $pdo->prepare("
     SELECT service_id, name, price, unit, duration_minutes, is_available
     FROM services
     ORDER BY name
 ");
+$stmt->execute();
 $services = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Lista pracowników
-$stmt = $pdo->query("
+$stmt = $pdo->prepare("
     SELECT
         e.employee_id,
         e.position,
         e.description,
         e.is_active,
+        u.is_active AS account_active,
+        u.role AS account_role,
         u.name,
         u.surname,
         u.customer_email,
@@ -283,6 +324,7 @@ $stmt = $pdo->query("
     JOIN users u ON u.user_id = e.user_id
     ORDER BY u.surname, u.name
 ");
+$stmt->execute();
 $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $isEditing = $formEmployeeId > 0;
@@ -584,6 +626,9 @@ $isEditing = $formEmployeeId > 0;
                                             <span class="badge bg-secondary">
                                                 Nieaktywny
                                             </span>
+                                        <?php endif; ?>
+                                        <?php if (!$employee['account_active'] || $employee['account_role'] !== 'employee'): ?>
+                                            <span class="badge bg-warning text-dark">Konto blokuje wybór przez klienta</span>
                                         <?php endif; ?>
                                     </td>
 
